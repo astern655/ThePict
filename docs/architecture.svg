@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 440" font-family="'Segoe UI','Noto Sans KR',sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#94a3b8"/>
+    </marker>
+    <style>
+      .box { rx: 12; }
+      .lbl { fill:#ffffff; font-size:15px; font-weight:600; text-anchor:middle; }
+      .sub { fill:#e5e7eb; font-size:11px; text-anchor:middle; }
+      .edge { stroke:#94a3b8; stroke-width:2; fill:none; marker-end:url(#arrow); }
+      .edgelbl { fill:#94a3b8; font-size:11px; text-anchor:middle; }
+      .layer { fill:#94a3b8; font-size:12px; font-weight:700; letter-spacing:1px; }
+    </style>
+  </defs>
+
+  <!-- layer labels -->
+  <text x="20" y="30" class="layer">요청 흐름 ▶</text>
+
+  <!-- main pipeline boxes -->
+  <!-- User -->
+  <rect x="20"  y="70" width="110" height="60" rx="12" fill="#64748b"/>
+  <text x="75"  y="98"  class="lbl">사용자</text>
+  <text x="75"  y="116" class="sub">촬영 · 업로드</text>
+
+  <!-- Client -->
+  <rect x="170" y="70" width="120" height="60" rx="12" fill="#3b82f6"/>
+  <text x="230" y="96"  class="lbl">클라이언트</text>
+  <text x="230" y="116" class="sub">Flutter</text>
+
+  <!-- API -->
+  <rect x="330" y="70" width="120" height="60" rx="12" fill="#10b981"/>
+  <text x="390" y="96"  class="lbl">API 서버</text>
+  <text x="390" y="116" class="sub">FastAPI</text>
+
+  <!-- Queue -->
+  <rect x="490" y="70" width="110" height="60" rx="12" fill="#f59e0b"/>
+  <text x="545" y="96"  class="lbl">작업 큐</text>
+  <text x="545" y="116" class="sub">Redis</text>
+
+  <!-- Worker -->
+  <rect x="640" y="70" width="120" height="60" rx="12" fill="#8b5cf6"/>
+  <text x="700" y="96"  class="lbl">AI Worker</text>
+  <text x="700" y="116" class="sub">모델 상주</text>
+
+  <!-- Engine -->
+  <rect x="640" y="200" width="120" height="60" rx="12" fill="#6366f1"/>
+  <text x="700" y="226" class="lbl">AI 엔진</text>
+  <text x="700" y="246" class="sub">ai.analyze_video</text>
+
+  <!-- horizontal arrows -->
+  <path class="edge" d="M130,100 L168,100"/>
+  <path class="edge" d="M290,100 L328,100"/>
+  <path class="edge" d="M450,100 L488,100"/>
+  <path class="edge" d="M600,100 L638,100"/>
+  <text x="149" y="92"  class="edgelbl">영상</text>
+  <text x="310" y="92"  class="edgelbl">업로드</text>
+  <text x="469" y="92"  class="edgelbl">등록</text>
+  <text x="619" y="92"  class="edgelbl">디큐</text>
+
+  <!-- worker -> engine -->
+  <path class="edge" d="M700,130 L700,198"/>
+  <text x="742" y="168" class="edgelbl">호출</text>
+
+  <!-- return arrow API -> Client (status/result) -->
+  <path class="edge" d="M330,124 C300,150 260,150 232,132"/>
+  <text x="285" y="162" class="edgelbl">상태 · 결과 조회</text>
+
+  <!-- data layer -->
+  <text x="20" y="330" class="layer">저장 계층</text>
+
+  <!-- DB -->
+  <rect x="330" y="200" width="120" height="60" rx="12" fill="#0ea5e9"/>
+  <text x="390" y="226" class="lbl">PostgreSQL</text>
+  <text x="390" y="246" class="sub">사용자 · 기록</text>
+
+  <!-- Storage -->
+  <rect x="490" y="200" width="120" height="60" rx="12" fill="#14b8a6"/>
+  <text x="550" y="226" class="lbl">영상 저장소</text>
+  <text x="550" y="246" class="sub">원본 · 주석 영상</text>
+
+  <!-- API -> DB / Storage -->
+  <path class="edge" d="M390,130 L390,198"/>
+  <path class="edge" d="M420,130 C450,160 520,160 545,198"/>
+
+  <!-- Worker/Engine -> DB / Storage (results) -->
+  <path class="edge" d="M660,200 C560,175 470,175 452,192" stroke-dasharray="5,4"/>
+  <path class="edge" d="M640,235 L612,232" stroke-dasharray="5,4"/>
+  <text x="560" y="150" class="edgelbl">결과 저장</text>
+</svg>
