@@ -1,0 +1,7 @@
+# 운동 자세 분석 앱 의존성
+# (torch/ultralytics는 이미 설치되어 있을 수 있음)
+
+ultralytics>=8.4        # YOLO Pose 모델 로딩·추론
+opencv-python>=4.10     # 영상 프레임 읽기/쓰기
+numpy>=1.26             # 좌표·벡터 연산
+streamlit>=1.40         # 웹 UI (업로드 → 결과 표시)

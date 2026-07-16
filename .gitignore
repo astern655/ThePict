@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+
+# Downloaded model weights
+models/*.pt
+
+# Local environment files
+.venv/
+venv/
+.env
