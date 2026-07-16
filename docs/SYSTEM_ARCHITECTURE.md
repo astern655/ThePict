@@ -85,10 +85,12 @@ flowchart LR
 | --- | --- | --- |
 | `User` | id, email, password_hash, nickname, created_at | 인증·소유권 |
 | `AnalysisJob` | id, user_id, exercise_type, status, original_video_path, annotated_video_path, error_message, created_at | 비동기 작업 추적 |
-| `WorkoutResult` | id, analysis_job_id, rep_count, frames_processed, duration_seconds | 완료된 분석 결과 요약 |
+| `WorkoutResult` | id, analysis_job_id, rep_count, camera_view, frames_processed, duration_seconds | 완료된 분석 결과 요약 |
+| `RepVerdict` | id, workout_result_id, rep_index, verdict(correct/needs_work/incorrect) | rep별 종합 판정(초록/노랑/빨강) |
 | `FormIssue` | id, workout_result_id, rep_index, code, severity, message, measured_value | rep별 자세 문제 상세 |
 
-영상 바이너리는 DB에 넣지 않고 경로/URL만 저장한다.
+영상 바이너리는 DB에 넣지 않고 경로/URL만 저장한다. `camera_view`·`RepVerdict` 는 AI 엔진이
+새로 내려주는 값이므로 스키마에 반영해 저장한다(`measured_value` ← 엔진 `measured`).
 
 ## 6. API 개요 (초안)
 
@@ -110,16 +112,33 @@ flowchart LR
 
 ```json
 // GET /api/v1/analyses/{job_id}/result 응답
+// 굵은 필드는 AI 엔진 Report.to_dict() 가 그대로 내려주는 값이다.
+// (annotated_video_url·job_id·status 는 백엔드가 채운다)
 {
   "job_id": "01J123ABC",
   "status": "completed",
   "rep_count": 10,
+  "camera_view": "side",                 // 스쿼트는 측면 촬영만 받으므로 항상 "side"
+  "verdict_counts": { "correct": 8, "needs_work": 1, "incorrect": 1 },
+  "rep_verdicts": [
+    { "rep_index": 3, "verdict": "needs_work", "label": "교정 필요" }
+  ],
   "issues": [
-    { "rep_index": 3, "code": "shallow_depth", "severity": "warning", "message": "조금 더 깊게 앉으세요." }
+    { "rep_index": 3, "code": "shallow_depth", "severity": "warning",
+      "message": "더 깊게 앉으세요 (허벅지가 바닥과 수평이 되도록).", "measured": 118.2 }
   ],
   "annotated_video_url": "/media/analyses/01J123ABC.mp4"
 }
 ```
+
+> **엔진 계약 주의점**
+> - `Report.to_dict()` 의 `annotated_video_path` 는 **서버 로컬 파일 경로**다. 백엔드가 정적
+>   서빙 URL(`annotated_video_url`)로 변환해서 내려줘야 하며, 로컬 경로를 그대로 노출하지 않는다.
+> - 각 결함의 값 필드 이름은 엔진에서는 `measured` 다(아래 DB의 `measured_value` 와 매핑).
+> - 스쿼트는 **측면 촬영 전용**이라 깊이·상체숙임만 판정한다(`camera_view` 는 항상 `"side"`).
+>   정면 전용 규칙(무릎모임·비대칭)은 정면 촬영을 도입할 때 추가한다.
+> - 잘못된 입력에 대해 엔진은 `FileNotFoundError`/`RuntimeError` 를 던진다. Worker 가 잡아
+>   작업 상태를 `FAILED` 로 바꾼다.
 
 ## 7. 디렉터리 구조 (목표)
 

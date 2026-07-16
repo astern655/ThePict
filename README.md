@@ -11,6 +11,8 @@ Claude Code가 작업을 지휘하고, Codex CLI가 읽기 전용으로 계획 �
 5. `codex login`을 실행해 Codex 계정으로 로그인합니다.
 6. Claude에게 작업을 요청합니다. 다단계 계획, 불명확한 실패, 구현 완료 후 검토가 필요하면 Claude가 `codex-consult.sh`를 사용합니다.
 7.AI가 수행하는 작업은 구현은 AI가 하되 사용자 과정을 이해하고 공부하는것이 가장 주된 목적임 이를 고려해서 출력 
+8.codex 사용 불가시 claude가 수행
+
 
 ## 협업 방식
 

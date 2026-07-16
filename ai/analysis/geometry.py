@@ -39,6 +39,3 @@ def torso_incline(shoulder: Point, hip: Point) -> float:
     return abs(math.degrees(math.atan2(dx, -dy)))
 
 
-def horizontal_gap(p: Point, q: Point) -> float:
-    """두 점의 수평(x) 거리 절댓값. 무릎 모임 검사 등에 사용."""
-    return abs(p[0] - q[0])
