@@ -1,17 +1,27 @@
 """AI 분석 로직 단독 검증 (측면 촬영 전용).
 
 YOLO도 영상도 없이, 가짜 관절 좌표를 만들어 넣어
-'각도 계산 → 상태기계 → 반복 카운트 → 자세 판정'이 맞는지 확인한다.
+'각도 계산 → 평활화 → 상태기계 → 반복 카운트 → 자세 판정'이 맞는지 확인한다.
 실행: python -m tests.test_squat_logic
+
+시퀀스는 실제 영상처럼 여러 프레임에 걸쳐 완만하게 변한다.
+(중앙값 필터가 단일 프레임 스파이크를 의도적으로 제거하기 때문)
 """
 from __future__ import annotations
 
 import math
 
-from ai.analysis.exercises.squat import SquatAnalyzer, check_torso
-from ai.analysis.feedback import RepVerdict
+from ai.analysis.exercises.squat import SquatAnalyzer, check_depth, check_torso
+from ai.analysis.feedback import RepVerdict, Severity
 from ai.analysis.geometry import angle_at
 from ai.pose.keypoints import KP, Keypoint
+
+# 정상 스쿼트 1회: 서 있음 → 완만히 내려감 → 최저점(80도) 유지 → 완만히 일어섬
+CLEAN_REP = [170, 170, 150, 130, 110, 95, 85, 80, 80, 85, 95, 110, 130, 150, 165, 175, 175]
+# 얕은 스쿼트 1회: 최저점이 120도까지만 내려감 (rep으로는 세되 깊이 부족 경고)
+SHALLOW_REP = [170, 170, 160, 150, 135, 125, 120, 120, 125, 135, 150, 165, 175, 175]
+# 거의 앉지 않은 1회: 최저점 132도로 심각 임계(120도)를 넘어 ERROR
+VERY_SHALLOW_REP = [170, 170, 160, 150, 138, 132, 132, 138, 150, 165, 175, 175]
 
 
 def _blank() -> list[Keypoint]:
@@ -56,17 +66,43 @@ def _upright_person(knee_angle_deg: float) -> list[Keypoint]:
     )
 
 
-def _leaning_bottom(knee_angle_deg: float = 80.0) -> list[Keypoint]:
-    """최저점에서 상체가 크게 앞으로 숙여진 자세(측면 torso_lean 형태)."""
+def _leaning_person(knee_angle_deg: float) -> list[Keypoint]:
+    """상체가 앞으로 숙여진 자세(측면 torso_lean 형태, WARNING 범위).
+
+    정강이는 수직(무릎이 발목 바로 위)이므로 상체−정강이 차이 = 상체 기울기.
+    어깨가 엉덩이보다 앞(x+100)·위(y-180)로 나가 약 29도 → 20~35도 WARNING 구간.
+    """
     knee = (300.0, 300.0)
     ankle = (300.0, 400.0)
     hip = _hip_for_angle(knee, ankle, knee_angle_deg)
-    # 어깨가 엉덩이보다 앞(x+160)·위(y-150)로 나가 약 46.8도 앞기울임
     return _set(
         _blank(),
         LEFT_HIP=hip, LEFT_KNEE=knee, LEFT_ANKLE=ankle,
-        LEFT_SHOULDER=(hip[0] + 160.0, hip[1] - 150.0),
+        LEFT_SHOULDER=(hip[0] + 100.0, hip[1] - 180.0),
     )
+
+
+def _torso_person(lean_deg: float, shin_deg: float | None = 0.0) -> list[Keypoint]:
+    """상체·정강이 기울기를 지정한 관절 배치(check_torso 단독 테스트용).
+
+    shin_deg=None이면 다리를 아예 숨겨 '정강이가 안 보이는' 경우를 만든다.
+    """
+    hip = (300.0, 250.0)
+    lean = math.radians(lean_deg)
+    kp = _set(
+        _blank(),
+        LEFT_HIP=hip,
+        LEFT_SHOULDER=(hip[0] + 120.0 * math.sin(lean), hip[1] - 120.0 * math.cos(lean)),
+    )
+    if shin_deg is not None:
+        ankle = (300.0, 400.0)
+        shin = math.radians(shin_deg)
+        kp = _set(
+            kp,
+            LEFT_ANKLE=ankle,
+            LEFT_KNEE=(ankle[0] + 100.0 * math.sin(shin), ankle[1] - 100.0 * math.cos(shin)),
+        )
+    return kp
 
 
 # --- 순수 계산 ----------------------------------------------------------
@@ -82,41 +118,100 @@ def test_angle_math() -> None:
 
 def test_rep_counting() -> None:
     analyzer = SquatAnalyzer()
-    sequence = [170, 140, 90, 80, 90, 140, 170] * 3
+    sequence = CLEAN_REP * 3
     for i, ang in enumerate(sequence):
         analyzer.update(_upright_person(ang), i)
     report = analyzer.finalize()
     assert report.rep_count == 3, f"기대 3회, 실제 {report.rep_count}회"
+    assert report.partial_rep_count == 0
     print(f"✅ 반복 카운트 정확: {report.rep_count}회")
 
 
-def test_shallow_depth_flag() -> None:
+def test_shallow_rep_counted_with_warning() -> None:
+    """얕은 스쿼트도 rep으로 세되 shallow_depth 경고를 붙인다."""
     analyzer = SquatAnalyzer()
-    sequence = [170, 130, 120, 130, 170]  # 최저 120 → DOWN 임계(100) 못 넘음
-    for i, ang in enumerate(sequence):
+    for i, ang in enumerate(SHALLOW_REP):
         analyzer.update(_upright_person(ang), i)
     report = analyzer.finalize()
-    assert report.rep_count == 0
-    print("✅ 얕은 스쿼트는 rep로 세지 않음(깊이 임계 동작)")
+    assert report.rep_count == 1, f"기대 1회, 실제 {report.rep_count}회"
+    codes = {i.code for i in report.issues_for_rep(1)}
+    assert "shallow_depth" in codes, f"깊이 부족을 못 잡음: {codes}"
+    assert report.rep_verdict(1) is RepVerdict.NEEDS_WORK
+    print("✅ 얕은 스쿼트 → rep으로 세고 '깊이 부족' 경고")
 
 
 # --- 자세 규칙(순수 함수) -----------------------------------------------
 
-def test_torso_rule() -> None:
-    # 어깨가 엉덩이보다 앞(x+)으로 크게 나가 46.8도 기울어진 자세
-    leaning = _set(_blank(), LEFT_SHOULDER=(460.0, 150.0), LEFT_HIP=(300.0, 300.0))
-    issue = check_torso(leaning, rep=1)
+def test_torso_rule_relative_to_shin() -> None:
+    """상체 앞숙임은 절대각이 아니라 상체−정강이 차이로 판정한다."""
+    # 정강이 수직 기준: 차이 25° → WARNING, 15°·경계값 20°는 정상
+    issue = check_torso(_torso_person(25.0, 0.0), rep=1)
     assert issue is not None and issue.code == "torso_lean"
-    upright = _set(_blank(), LEFT_SHOULDER=(300.0, 150.0), LEFT_HIP=(300.0, 300.0))
-    assert check_torso(upright, rep=1) is None
-    print("✅ 상체 숙임(torso_lean) 규칙 동작 (좌우 자동 선택)")
+    assert issue.severity is Severity.WARNING
+    assert check_torso(_torso_person(15.0, 0.0), rep=1) is None
+    assert check_torso(_torso_person(20.0, 0.0), rep=1) is None
+    print("✅ 상체−정강이 차이 기반 torso_lean 규칙 동작")
+
+
+def test_deep_squat_lean_is_not_punished() -> None:
+    """깊은 스쿼트의 자연스러운 앞기울임(상체 50°/정강이 35°)은 결함이 아니다.
+
+    절대각 기준(45°)이라면 억울하게 걸렸을 자세. 차이는 15°뿐이므로 정상.
+    """
+    assert check_torso(_torso_person(50.0, 35.0), rep=1) is None
+    # 발목이 뻣뻣해 상체 62°까지 기울어도 정강이가 45°면 균형 잡힌 자세다
+    assert check_torso(_torso_person(62.0, 45.0), rep=1) is None
+    print("✅ 깊은 스쿼트의 자연스러운 기울임은 처벌하지 않음")
+
+
+def test_torso_rule_severe_tier() -> None:
+    """차이가 35°를 넘으면(굿모닝 자세) ERROR로 올라간다."""
+    issue = check_torso(_torso_person(45.0, 5.0), rep=1)  # 차이 40°
+    assert issue is not None and issue.code == "excessive_torso_lean"
+    assert issue.severity is Severity.ERROR
+    # 문구가 WARNING 단계와 달라야 한다 (단계별 특화 안내)
+    warn = check_torso(_torso_person(25.0, 0.0), rep=1)
+    assert issue.message != warn.message
+    print("✅ 굿모닝 자세(excessive_torso_lean) → ERROR + 전용 문구")
+
+
+def test_torso_hard_cap() -> None:
+    """상체 절대 기울기가 70°를 넘으면 정강이와 무관하게 ERROR."""
+    # 차이는 30°(WARNING급)지만 상체가 수평에 가까워 절대 상한에 걸린다
+    issue = check_torso(_torso_person(75.0, 45.0), rep=1)
+    assert issue is not None and issue.code == "excessive_torso_lean"
+    assert issue.severity is Severity.ERROR
+    print("✅ 절대 상한(70°) 안전장치 동작")
+
+
+def test_torso_needs_shin_for_relative_tiers() -> None:
+    """다리가 안 보이면 상대 판정은 보류하고 절대 상한만 검사한다."""
+    assert check_torso(_torso_person(50.0, None), rep=1) is None
+    issue = check_torso(_torso_person(75.0, None), rep=1)
+    assert issue is not None and issue.code == "excessive_torso_lean"
+    print("✅ 정강이 미검출 시 상대 판정 보류 + 절대 상한은 유지")
+
+
+def test_depth_tiers() -> None:
+    """깊이 3단계(좋음/부족/거의 안 앉음)가 각각 다른 코드·등급·문구를 낸다."""
+    good = check_depth(85.0, rep=1)
+    warn = check_depth(110.0, rep=1)
+    error = check_depth(135.0, rep=1)
+    assert (good.code, good.severity) == ("good_depth", Severity.GOOD)
+    assert (warn.code, warn.severity) == ("shallow_depth", Severity.WARNING)
+    assert (error.code, error.severity) == ("very_shallow_depth", Severity.ERROR)
+    assert len({good.message, warn.message, error.message}) == 3
+    # 경계값은 아래 단계에 속한다 (초과일 때만 다음 단계)
+    assert check_depth(100.0, rep=1).code == "good_depth"
+    assert check_depth(120.0, rep=1).code == "shallow_depth"
+    print("✅ 깊이 3단계 + 단계별 전용 문구")
 
 
 # --- 통합: 최저점 스냅샷으로 판정하는지 + rep별 종합 판정 ----------------
 
 def test_verdict_correct_on_clean_squat() -> None:
     analyzer = SquatAnalyzer()
-    for i, ang in enumerate([170, 140, 90, 80, 90, 140, 170]):
+    for i, ang in enumerate(CLEAN_REP):
         analyzer.update(_upright_person(ang), i)
     report = analyzer.finalize()
     assert report.rep_count == 1
@@ -126,14 +221,10 @@ def test_verdict_correct_on_clean_squat() -> None:
 
 
 def test_verdict_uses_bottom_frame() -> None:
-    """최저점에만 상체 숙임이 있어도, 서 있는 프레임이 아니라 최저점으로 판정해야 한다."""
+    """최저점 부근에만 상체 숙임이 있어도, 서 있는 프레임이 아니라 최저점으로 판정해야 한다."""
     analyzer = SquatAnalyzer()
-    sequence = [
-        _upright_person(170), _upright_person(140),
-        _leaning_bottom(80),                    # 최저점 = 상체 숙임
-        _upright_person(140), _upright_person(170),
-    ]
-    for i, person in enumerate(sequence):
+    for i, ang in enumerate(CLEAN_REP):
+        person = _leaning_person(ang) if ang <= 85 else _upright_person(ang)
         analyzer.update(person, i)
     report = analyzer.finalize()
     assert report.rep_count == 1
@@ -143,11 +234,30 @@ def test_verdict_uses_bottom_frame() -> None:
     print("✅ 최저점 프레임으로 판정 → '교정 필요'(상체 숙임)")
 
 
+def test_verdict_incorrect_on_very_shallow_rep() -> None:
+    """심각 임계를 넘은 깊이 부족은 rep 판정을 '잘못됨'(incorrect)으로 만든다."""
+    analyzer = SquatAnalyzer()
+    for i, ang in enumerate(VERY_SHALLOW_REP):
+        analyzer.update(_upright_person(ang), i)
+    report = analyzer.finalize()
+    assert report.rep_count == 1, f"기대 1회, 실제 {report.rep_count}회"
+    codes = {i.code for i in report.issues_for_rep(1)}
+    assert "very_shallow_depth" in codes, f"심각한 깊이 부족을 못 잡음: {codes}"
+    assert report.rep_verdict(1) is RepVerdict.INCORRECT
+    print("✅ 거의 앉지 않은 rep → 판정 '잘못됨'")
+
+
 if __name__ == "__main__":
     test_angle_math()
     test_rep_counting()
-    test_shallow_depth_flag()
-    test_torso_rule()
+    test_shallow_rep_counted_with_warning()
+    test_torso_rule_relative_to_shin()
+    test_deep_squat_lean_is_not_punished()
+    test_torso_rule_severe_tier()
+    test_torso_hard_cap()
+    test_torso_needs_shin_for_relative_tiers()
+    test_depth_tiers()
     test_verdict_correct_on_clean_squat()
     test_verdict_uses_bottom_frame()
+    test_verdict_incorrect_on_very_shallow_rep()
     print("\n모든 로직 테스트 통과 🎉")

@@ -10,10 +10,37 @@ from pathlib import Path
 import cv2
 
 from ai.analysis.exercises import create_analyzer
-from ai.analysis.feedback import Report
-from ai.config import OUTPUT_DIR
+from ai.analysis.feedback import Issue, Report, RepVerdict, Severity
+from ai.config import (
+    MIN_PERSON_RATIO,
+    OUTPUT_DIR,
+    VIDEO_FPS_FALLBACK,
+    VIDEO_FPS_MAX,
+    VIDEO_FPS_MIN,
+)
 from ai.pose.detector import PoseDetector
 from ai.video.annotator import draw_hud, draw_person
+
+# 직전에 끝난 rep의 판정 → 스켈레톤 색 (BGR)
+_VERDICT_COLOR: dict[RepVerdict, tuple[int, int, int]] = {
+    RepVerdict.CORRECT: (0, 200, 0),        # 초록
+    RepVerdict.NEEDS_WORK: (0, 215, 255),   # 노랑
+    RepVerdict.INCORRECT: (0, 0, 255),      # 빨강
+}
+
+
+def _detection_gate(report: Report, processed: int, with_person: int) -> None:
+    """사람 검출률이 낮으면 결과를 신뢰하기 어렵다는 영상 수준 경고를 붙인다."""
+    if processed <= 0:
+        return
+    ratio = with_person / processed
+    if ratio < MIN_PERSON_RATIO:
+        report.add_video_issue(Issue(
+            rep_index=0, code="low_detection", severity=Severity.WARNING,
+            message="영상에서 사람이 안정적으로 검출되지 않아 결과가 부정확할 수 있습니다. "
+                    "전신이 나오도록 밝은 곳에서 다시 촬영해 주세요.",
+            measured=round(ratio, 2),
+        ))
 
 
 def analyze_video(
@@ -40,15 +67,22 @@ def analyze_video(
         raise FileNotFoundError(f"영상을 찾을 수 없습니다: {video_path}")
 
     detector = detector or PoseDetector()
-    analyzer = create_analyzer(exercise)
+    detector.reset()  # 재사용 시 직전 영상의 사람 추적을 초기화
 
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
         raise RuntimeError(f"영상을 열 수 없습니다: {video_path}")
 
-    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    # 메타데이터가 깨진 영상은 fps로 0·None뿐 아니라 1000 같은 쓰레기 값도 준다.
+    # 그대로 쓰면 rep 시각(초)이 전부 틀어지므로 범위 밖이면 대체값을 쓴다.
+    fps = cap.get(cv2.CAP_PROP_FPS) or 0.0
+    if not (VIDEO_FPS_MIN <= fps <= VIDEO_FPS_MAX):
+        fps = VIDEO_FPS_FALLBACK
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+    # fps를 넘겨야 분석기가 rep별 시각(초)을 계산할 수 있다.
+    analyzer = create_analyzer(exercise, fps=fps)
 
     writer = None
     out_path: Path | None = None
@@ -76,12 +110,14 @@ def analyze_video(
                 if writer is not None:
                     annotated = frame
                     if person is not None:
-                        annotated = draw_person(frame, person)
+                        # 스켈레톤 색 = 직전에 끝난 rep의 판정색(첫 rep 전엔 기본색)
+                        bone_color = None
+                        last_rep = analyzer.report.rep_count
+                        if last_rep > 0:
+                            bone_color = _VERDICT_COLOR[analyzer.report.rep_verdict(last_rep)]
+                        annotated = draw_person(frame, person, bone_color=bone_color)
                     # HUD는 cv2 폰트라 영어로 (한글은 깨짐)
-                    annotated = draw_hud(annotated, [
-                        f"Exercise: {exercise}",
-                        f"Reps: {analyzer.report.rep_count}",
-                    ])
+                    annotated = draw_hud(annotated, [f"Exercise: {exercise}", *analyzer.hud_lines()])
                     writer.write(annotated)
 
             frame_index += 1
@@ -93,6 +129,7 @@ def analyze_video(
     report = analyzer.finalize()
     report.frames_processed = processed
     report.frames_with_person = with_person
+    _detection_gate(report, processed, with_person)
     if out_path is not None:
         report.annotated_video_path = str(out_path)
     return report

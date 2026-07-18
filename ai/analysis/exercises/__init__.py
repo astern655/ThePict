@@ -16,13 +16,13 @@ REGISTRY: dict[str, type[ExerciseAnalyzer]] = {
 }
 
 
-def create_analyzer(exercise: str) -> ExerciseAnalyzer:
+def create_analyzer(exercise: str, fps: float | None = None) -> ExerciseAnalyzer:
     key = exercise.lower().strip()
     if key not in REGISTRY:
         raise ValueError(
             f"지원하지 않는 운동: {exercise!r}. 사용 가능: {', '.join(REGISTRY)}"
         )
-    return REGISTRY[key]()
+    return REGISTRY[key](fps=fps)
 
 
 def available_exercises() -> list[str]:

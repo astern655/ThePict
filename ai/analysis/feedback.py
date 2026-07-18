@@ -52,8 +52,12 @@ def verdict_from_issues(issues: list["Issue"]) -> RepVerdict:
 
 @dataclass
 class Issue:
-    """한 rep에서 발견된 하나의 피드백 항목."""
-    rep_index: int          # 몇 번째 반복인가 (1부터)
+    """한 rep에서 발견된 하나의 피드백 항목.
+
+    rep_index=0 은 특정 rep이 아니라 영상 전체에 대한 항목이라는 뜻이다
+    (예: 측면 촬영이 아님, 사람 검출률 낮음). Report.video_issues에 담긴다.
+    """
+    rep_index: int          # 몇 번째 반복인가 (1부터, 0=영상 전체)
     code: str               # 규칙 식별자 예: "shallow_depth"
     severity: Severity
     message: str            # 사용자에게 보여줄 한국어 문장
@@ -70,11 +74,49 @@ class Issue:
 
 
 @dataclass
+class RepRecord:
+    """한 rep의 구간 정보(어느 프레임/몇 초에 일어났는가).
+
+    UI가 "3회차가 잘못됐다" 피드백을 영상의 해당 구간으로 바로 연결(시킹)
+    할 수 있게 한다. *_sec 값들은 fps를 알 때만 채워진다(모르면 None).
+    """
+    rep_index: int
+    start_frame: int        # 내려가기 시작한 프레임
+    bottom_frame: int       # 가장 깊이 앉은 프레임
+    end_frame: int          # 완전히 일어선 프레임
+    bottom_angle: float | None = None  # 최저점 관절각(스쿼트면 무릎각)
+    start_sec: float | None = None
+    bottom_sec: float | None = None
+    end_sec: float | None = None
+    duration_sec: float | None = None  # rep 전체 소요 시간
+    descent_sec: float | None = None   # 내려가는 데 걸린 시간
+    ascent_sec: float | None = None    # 올라오는 데 걸린 시간
+
+    def to_dict(self) -> dict:
+        return {
+            "rep_index": self.rep_index,
+            "start_frame": self.start_frame,
+            "bottom_frame": self.bottom_frame,
+            "end_frame": self.end_frame,
+            "bottom_angle": self.bottom_angle,
+            "start_sec": self.start_sec,
+            "bottom_sec": self.bottom_sec,
+            "end_sec": self.end_sec,
+            "duration_sec": self.duration_sec,
+            "descent_sec": self.descent_sec,
+            "ascent_sec": self.ascent_sec,
+        }
+
+
+@dataclass
 class Report:
     """영상 하나에 대한 최종 분석 결과."""
     exercise: str
     rep_count: int = 0
     issues: list[Issue] = field(default_factory=list)
+    reps: list[RepRecord] = field(default_factory=list)  # rep별 구간/시각 정보
+    video_issues: list[Issue] = field(default_factory=list)  # 영상 전체 수준 경고
+    partial_rep_count: int = 0  # 깊이가 모자라 rep로 인정 못 한 움직임 수
     frames_processed: int = 0
     frames_with_person: int = 0
     annotated_video_path: str | None = None
@@ -82,6 +124,17 @@ class Report:
 
     def add(self, issue: Issue) -> None:
         self.issues.append(issue)
+
+    def add_video_issue(self, issue: Issue) -> None:
+        """특정 rep이 아닌 영상 전체에 대한 경고를 추가한다(rep_index=0)."""
+        self.video_issues.append(issue)
+
+    def rep_record(self, rep_index: int) -> RepRecord | None:
+        """특정 rep의 구간 정보(없으면 None)."""
+        for r in self.reps:
+            if r.rep_index == rep_index:
+                return r
+        return None
 
     def issues_for_rep(self, rep_index: int) -> list[Issue]:
         """특정 rep에서 나온 결함만 골라 반환."""
@@ -99,11 +152,18 @@ class Report:
         out = []
         for rep in range(1, self.rep_count + 1):
             v = self.rep_verdict(rep)
-            out.append({
+            entry = {
                 "rep_index": rep,
                 "verdict": v.value,
                 "label": _VERDICT_LABEL[v],
-            })
+            }
+            # 구간 정보가 있으면 UI가 바로 시킹할 수 있게 시각을 붙인다.
+            record = self.rep_record(rep)
+            if record is not None:
+                entry["start_sec"] = record.start_sec
+                entry["bottom_sec"] = record.bottom_sec
+                entry["end_sec"] = record.end_sec
+            out.append(entry)
         return out
 
     def verdict_counts(self) -> dict[str, int]:
@@ -116,6 +176,12 @@ class Report:
     def summary_lines(self) -> list[str]:
         """UI에 뿌리기 좋은 요약 문장 리스트."""
         lines = [f"운동: {self.exercise}", f"총 반복: {self.rep_count}회"]
+
+        # 영상 전체 수준 경고(측면 아님·검출률 낮음 등)는 맨 위에서 알린다.
+        for vi in self.video_issues:
+            lines.append(f"⚠️ {vi.message}")
+        if self.partial_rep_count:
+            lines.append(f"부분 반복 {self.partial_rep_count}회 (깊이가 얕아 횟수에서 제외)")
 
         # rep별 종합 판정을 한눈에
         if self.rep_count:
@@ -143,11 +209,14 @@ class Report:
         return {
             "exercise": self.exercise,
             "rep_count": self.rep_count,
+            "partial_rep_count": self.partial_rep_count,
             "camera_view": self.camera_view,
             "frames_processed": self.frames_processed,
             "frames_with_person": self.frames_with_person,
             "annotated_video_path": self.annotated_video_path,
             "issues": [i.to_dict() for i in self.issues],
+            "video_issues": [i.to_dict() for i in self.video_issues],
+            "reps": [r.to_dict() for r in self.reps],
             "rep_verdicts": self.rep_verdicts(),
             "verdict_counts": self.verdict_counts(),
             "summary": self.summary_lines(),

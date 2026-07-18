@@ -1,0 +1,108 @@
+[
+  {
+    "id": "correct_deep_squat",
+    "label": "correct",
+    "notes": "충분히 깊고 상체 기울기가 기준 안에 있는 1회 반복 (완만한 다중 프레임 시퀀스)",
+    "frames": [
+      { "knee_angle": 170, "torso": "upright" },
+      { "knee_angle": 170, "torso": "upright" },
+      { "knee_angle": 150, "torso": "upright" },
+      { "knee_angle": 130, "torso": "upright" },
+      { "knee_angle": 110, "torso": "upright" },
+      { "knee_angle": 95, "torso": "upright" },
+      { "knee_angle": 85, "torso": "upright" },
+      { "knee_angle": 80, "torso": "upright" },
+      { "knee_angle": 80, "torso": "upright" },
+      { "knee_angle": 85, "torso": "upright" },
+      { "knee_angle": 95, "torso": "upright" },
+      { "knee_angle": 110, "torso": "upright" },
+      { "knee_angle": 130, "torso": "upright" },
+      { "knee_angle": 150, "torso": "upright" },
+      { "knee_angle": 165, "torso": "upright" },
+      { "knee_angle": 175, "torso": "upright" },
+      { "knee_angle": 175, "torso": "upright" }
+    ],
+    "expected_rep_count": 1,
+    "expected_reps": [
+      { "rep_index": 1, "verdict": "correct", "feedback_codes": [] }
+    ]
+  },
+  {
+    "id": "shallow_squat",
+    "label": "incorrect",
+    "notes": "반복은 했지만 최저 무릎 각도가 100도보다 커서 깊이 부족",
+    "frames": [
+      { "knee_angle": 170, "torso": "upright" },
+      { "knee_angle": 170, "torso": "upright" },
+      { "knee_angle": 160, "torso": "upright" },
+      { "knee_angle": 150, "torso": "upright" },
+      { "knee_angle": 135, "torso": "upright" },
+      { "knee_angle": 125, "torso": "upright" },
+      { "knee_angle": 120, "torso": "upright" },
+      { "knee_angle": 120, "torso": "upright" },
+      { "knee_angle": 125, "torso": "upright" },
+      { "knee_angle": 135, "torso": "upright" },
+      { "knee_angle": 150, "torso": "upright" },
+      { "knee_angle": 165, "torso": "upright" },
+      { "knee_angle": 175, "torso": "upright" },
+      { "knee_angle": 175, "torso": "upright" }
+    ],
+    "expected_rep_count": 1,
+    "expected_reps": [
+      { "rep_index": 1, "verdict": "needs_work", "feedback_codes": ["shallow_depth"] }
+    ]
+  },
+  {
+    "id": "leaning_bottom_squat",
+    "label": "incorrect",
+    "notes": "가장 깊은 프레임 부근에서 상체가 과하게 앞으로 기울어진 경우",
+    "frames": [
+      { "knee_angle": 170, "torso": "upright" },
+      { "knee_angle": 170, "torso": "upright" },
+      { "knee_angle": 150, "torso": "upright" },
+      { "knee_angle": 130, "torso": "upright" },
+      { "knee_angle": 110, "torso": "upright" },
+      { "knee_angle": 95, "torso": "upright" },
+      { "knee_angle": 85, "torso": "leaning" },
+      { "knee_angle": 80, "torso": "leaning" },
+      { "knee_angle": 80, "torso": "leaning" },
+      { "knee_angle": 85, "torso": "leaning" },
+      { "knee_angle": 95, "torso": "upright" },
+      { "knee_angle": 110, "torso": "upright" },
+      { "knee_angle": 130, "torso": "upright" },
+      { "knee_angle": 150, "torso": "upright" },
+      { "knee_angle": 165, "torso": "upright" },
+      { "knee_angle": 175, "torso": "upright" },
+      { "knee_angle": 175, "torso": "upright" }
+    ],
+    "expected_rep_count": 1,
+    "expected_reps": [
+      { "rep_index": 1, "verdict": "needs_work", "feedback_codes": ["torso_lean"] }
+    ]
+  },
+  {
+    "id": "shallow_and_leaning_squat",
+    "label": "incorrect",
+    "notes": "깊이 부족과 상체 과도한 기울기가 동시에 나와야 하는 경우",
+    "frames": [
+      { "knee_angle": 170, "torso": "upright" },
+      { "knee_angle": 170, "torso": "upright" },
+      { "knee_angle": 160, "torso": "upright" },
+      { "knee_angle": 150, "torso": "upright" },
+      { "knee_angle": 135, "torso": "upright" },
+      { "knee_angle": 125, "torso": "leaning" },
+      { "knee_angle": 120, "torso": "leaning" },
+      { "knee_angle": 120, "torso": "leaning" },
+      { "knee_angle": 125, "torso": "leaning" },
+      { "knee_angle": 135, "torso": "upright" },
+      { "knee_angle": 150, "torso": "upright" },
+      { "knee_angle": 165, "torso": "upright" },
+      { "knee_angle": 175, "torso": "upright" },
+      { "knee_angle": 175, "torso": "upright" }
+    ],
+    "expected_rep_count": 1,
+    "expected_reps": [
+      { "rep_index": 1, "verdict": "needs_work", "feedback_codes": ["shallow_depth", "torso_lean"] }
+    ]
+  }
+]

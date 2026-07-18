@@ -16,8 +16,13 @@ _BONE_COLOR = (255, 180, 0)    # 파란 선 (BGR)
 _TEXT_COLOR = (255, 255, 255)
 
 
-def draw_person(frame: np.ndarray, person: Person) -> np.ndarray:
-    """관절 점 + 뼈대 선을 프레임에 그려 새 이미지를 반환."""
+def draw_person(
+    frame: np.ndarray, person: Person, bone_color: tuple[int, int, int] | None = None
+) -> np.ndarray:
+    """관절 점 + 뼈대 선을 프레임에 그려 새 이미지를 반환.
+
+    bone_color를 주면 뼈대 색을 바꾼다(예: 직전 rep 판정색 초록/노랑/빨강).
+    """
     out = frame.copy()
 
     # 뼈대(선) 먼저
@@ -25,7 +30,7 @@ def draw_person(frame: np.ndarray, person: Person) -> np.ndarray:
         if person[a].visible and person[b].visible:
             pa = (int(person[a].x), int(person[a].y))
             pb = (int(person[b].x), int(person[b].y))
-            cv2.line(out, pa, pb, _BONE_COLOR, 2)
+            cv2.line(out, pa, pb, bone_color or _BONE_COLOR, 2)
 
     # 관절(점)
     for kp in person:
