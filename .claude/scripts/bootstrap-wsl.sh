@@ -10,7 +10,7 @@ NPM_PREFIX="$HOME/.local/npm-global"
 mkdir -p "$HOME/.local" "$LOCAL_BIN" "$NPM_PREFIX"
 
 if [[ "$(uname -r)" == 4.*Microsoft* ]]; then
-  echo "WSL 1 detected. Codex can install, but current Claude Code requires WSL 2 in this environment." >&2
+  echo "WSL 1 detected. Current Claude Code requires WSL 2 in this environment." >&2
   echo "In Windows PowerShell, run: wsl --set-version Ubuntu 2" >&2
   exit 65
 fi
@@ -34,9 +34,8 @@ fi
 
 export PATH="$LOCAL_BIN:$NPM_PREFIX/bin:$PATH"
 npm config set prefix "$NPM_PREFIX"
-npm install -g @anthropic-ai/claude-code @openai/codex
+npm install -g @anthropic-ai/claude-code
 
 echo "Installed Node: $(node --version)"
 echo "Installed Claude: $(claude --version)"
-echo "Installed Codex: $(codex --version)"
-echo "Open a new WSL terminal, then run: claude  and  codex login"
+echo "Open a new WSL terminal, then run: claude"

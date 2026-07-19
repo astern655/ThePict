@@ -1,15 +1,7 @@
 {
   "permissions": {
     "allow": [
-      "Bash(claude *)",
-      "Bash(codex *)",
-      "PowerShell(Get-Command codex -ErrorAction SilentlyContinue)",
-      "PowerShell(codex --version 2>&1)",
-      "PowerShell(codex.cmd --version)",
-      "PowerShell(codex.cmd exec --help 2>&1)",
-      "PowerShell(Get-Content \\(Get-Command codex.cmd\\).Source | Select-Object -First 30)",
-      "PowerShell(cmd /c \"codex.cmd exec --sandbox read-only --skip-git-repo-check --output-last-message out_test.md `\"Reply with exactly: OK`\"\")",
-      "PowerShell(& codex.cmd exec --sandbox read-only --skip-git-repo-check hello)"
+      "Bash(claude *)"
     ]
   }
 }
