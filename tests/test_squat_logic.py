@@ -70,7 +70,7 @@ def _leaning_person(knee_angle_deg: float) -> list[Keypoint]:
     """상체가 앞으로 숙여진 자세(측면 torso_lean 형태, WARNING 범위).
 
     정강이는 수직(무릎이 발목 바로 위)이므로 상체−정강이 차이 = 상체 기울기.
-    어깨가 엉덩이보다 앞(x+100)·위(y-180)로 나가 약 29도 → 20~35도 WARNING 구간.
+    어깨가 엉덩이보다 앞(x+100)·위(y-180)로 나가 약 29도 → 25~35도 WARNING 구간.
     """
     knee = (300.0, 300.0)
     ankle = (300.0, 400.0)
@@ -144,12 +144,14 @@ def test_shallow_rep_counted_with_warning() -> None:
 
 def test_torso_rule_relative_to_shin() -> None:
     """상체 앞숙임은 절대각이 아니라 상체−정강이 차이로 판정한다."""
-    # 정강이 수직 기준: 차이 25° → WARNING, 15°·경계값 20°는 정상
-    issue = check_torso(_torso_person(25.0, 0.0), rep=1)
+    # 정강이 수직 기준: 차이 26° → WARNING, 15°·경계값 25°는 정상
+    issue = check_torso(_torso_person(26.0, 0.0), rep=1)
     assert issue is not None and issue.code == "torso_lean"
     assert issue.severity is Severity.WARNING
+    assert issue.threshold == 25.0
     assert check_torso(_torso_person(15.0, 0.0), rep=1) is None
-    assert check_torso(_torso_person(20.0, 0.0), rep=1) is None
+    # 경계는 '초과일 때만 승급'이라 정확히 25°는 정상이다
+    assert check_torso(_torso_person(25.0, 0.0), rep=1) is None
     print("✅ 상체−정강이 차이 기반 torso_lean 규칙 동작")
 
 
@@ -170,7 +172,7 @@ def test_torso_rule_severe_tier() -> None:
     assert issue is not None and issue.code == "excessive_torso_lean"
     assert issue.severity is Severity.ERROR
     # 문구가 WARNING 단계와 달라야 한다 (단계별 특화 안내)
-    warn = check_torso(_torso_person(25.0, 0.0), rep=1)
+    warn = check_torso(_torso_person(26.0, 0.0), rep=1)
     assert issue.message != warn.message
     print("✅ 굿모닝 자세(excessive_torso_lean) → ERROR + 전용 문구")
 
@@ -247,6 +249,62 @@ def test_verdict_incorrect_on_very_shallow_rep() -> None:
     print("✅ 거의 앉지 않은 rep → 판정 '잘못됨'")
 
 
+# --- 리포트 출력(임계값 노출 + rep별 코칭 문구) --------------------------
+
+def test_issue_carries_threshold() -> None:
+    """모든 판정 항목이 자신을 발생시킨 기준선을 measured와 같은 단위로 들고 있다."""
+    assert check_depth(110.0, rep=1).threshold == 100.0   # shallow_depth
+    assert check_depth(135.0, rep=1).threshold == 120.0   # very_shallow_depth
+    assert check_depth(85.0, rep=1).threshold == 100.0    # good_depth
+    # 상체는 두 갈래: 상대 차이(35°)와 절대 상한(70°)이 서로 다른 기준선이다
+    assert check_torso(_torso_person(45.0, 5.0), rep=1).threshold == 35.0
+    assert check_torso(_torso_person(75.0, None), rep=1).threshold == 70.0
+    assert check_depth(85.0, rep=1).to_dict()["threshold"] == 100.0
+    print("✅ Issue.threshold가 지표별 기준선을 정확히 담는다")
+
+
+def test_boundary_uses_displayed_value() -> None:
+    """판정은 반올림된 표시값으로 내린다 → '측정값=기준값인데 결함' 모순이 없다."""
+    # 원시 120.04°는 120.0°으로 표시되므로 ERROR가 아니라 WARNING이어야 한다
+    assert check_depth(120.04, rep=1).code == "shallow_depth"
+    assert check_depth(120.06, rep=1).code == "very_shallow_depth"
+    # 절대 상한도 같은 규칙: 70.04°는 70.0°으로 표시되므로 결함이 아니다
+    assert check_torso(_torso_person(70.04, None), rep=1) is None
+    assert check_torso(_torso_person(70.06, None), rep=1) is not None
+    # 상대 차이도 마찬가지
+    assert check_torso(_torso_person(25.04, 0.0), rep=1) is None
+    print("✅ 경계 판정이 표시값 기준으로 일관")
+
+
+def test_summary_lines_are_actionable_per_rep() -> None:
+    """요약이 rep별로 '몇 회차·몇 초 지점·측정값 대 기준값·무엇을 할지'를 낸다."""
+    analyzer = SquatAnalyzer(fps=30.0)
+    for i, ang in enumerate(CLEAN_REP):
+        person = _leaning_person(ang) if ang <= 85 else _upright_person(ang)
+        analyzer.update(person, i)
+    report = analyzer.finalize()
+
+    lines = report.summary_lines()
+    header = next(l for l in lines if "1회차" in l)
+    assert "교정 필요" in header
+    assert "최저점" in header and "초" in header, f"시각이 없다: {header}"
+    detail = next(l for l in lines if l.startswith("   └"))
+    assert "가슴을 세운" in detail, f"교정 행동이 없다: {detail}"
+    assert "측정" in detail and "기준 25.0°" in detail, f"수치 대비가 없다: {detail}"
+    print("✅ rep별 코칭 문구(시각·측정값·기준값·행동) 출력")
+
+
+def test_summary_omits_timestamp_when_fps_unknown() -> None:
+    """fps를 모르면 시각을 지어내지 않고 헤더만 낸다."""
+    analyzer = SquatAnalyzer()  # fps 미지정 → *_sec 전부 None
+    for i, ang in enumerate(CLEAN_REP):
+        analyzer.update(_upright_person(ang), i)
+    report = analyzer.finalize()
+    header = next(l for l in report.summary_lines() if "1회차" in l)
+    assert "최저점" not in header, f"시각을 모르는데 출력했다: {header}"
+    print("✅ fps 미상이면 시각 없이 헤더만")
+
+
 if __name__ == "__main__":
     test_angle_math()
     test_rep_counting()
@@ -260,4 +318,8 @@ if __name__ == "__main__":
     test_verdict_correct_on_clean_squat()
     test_verdict_uses_bottom_frame()
     test_verdict_incorrect_on_very_shallow_rep()
+    test_issue_carries_threshold()
+    test_boundary_uses_displayed_value()
+    test_summary_lines_are_actionable_per_rep()
+    test_summary_omits_timestamp_when_fps_unknown()
     print("\n모든 로직 테스트 통과 🎉")

@@ -3,15 +3,14 @@
     "id": "squat_001",
     "video_path": "data/videos/squat_001.mp4",
     "view": "side",
-    "notes": "실내, 왼쪽 측면 촬영, 3m 거리",
-    "expected_rep_count": 3,
+    "expected_rep_count": 2,
     "expected_partial_rep_count": 0,
     "expected_video_codes": [],
     "expected_reps": [
       {
         "rep_index": 1,
-        "start_sec": 1.2,
-        "bottom_sec": 2.0,
+        "start_sec": 0.1,
+        "bottom_sec": 1.0,
         "end_sec": 2.9,
         "label": "correct",
         "feedback_codes": []
@@ -19,18 +18,10 @@
       {
         "rep_index": 2,
         "start_sec": 3.5,
-        "bottom_sec": 4.3,
-        "end_sec": 5.1,
-        "label": "needs_work",
-        "feedback_codes": ["shallow_depth"]
-      },
-      {
-        "rep_index": 3,
-        "start_sec": 5.8,
-        "bottom_sec": 6.7,
-        "end_sec": 7.6,
-        "label": "incorrect",
-        "feedback_codes": ["very_shallow_depth", "torso_lean"]
+        "bottom_sec": 5.5,
+        "end_sec": 6.9,
+        "label": "correct",
+        "feedback_codes": []
       }
     ]
   },
@@ -38,24 +29,133 @@
     "id": "squat_002",
     "video_path": "data/videos/squat_002.mp4",
     "view": "side",
-    "notes": "야외, 오른쪽 측면 촬영. 마지막에 얕은 움직임 1회는 rep 아님",
     "expected_rep_count": 2,
     "expected_partial_rep_count": 1,
     "expected_video_codes": ["partial_reps"],
     "expected_reps": [
       {
         "rep_index": 1,
-        "start_sec": 0.8,
-        "bottom_sec": 1.7,
+        "start_sec": 0.2,
+        "bottom_sec": 1.1,
         "end_sec": 2.6,
-        "label": "incorrect",
-        "feedback_codes": ["excessive_torso_lean"]
+        "label": "",
+        "feedback_codes": [""]
       },
       {
         "rep_index": 2,
         "start_sec": 3.2,
-        "bottom_sec": 4.1,
-        "end_sec": 5.0,
+        "bottom_sec": 4.6,
+        "end_sec": 5.2,
+        "label": "correct",
+        "feedback_codes": []
+      }
+    ]
+  },
+  {
+    "id": "squat_003",
+    "video_path": "data/videos/squat_003.mp4",
+    "view": "side",
+    "expected_rep_count": 2,
+    "expected_partial_rep_count": 0,
+    "expected_video_codes": [],
+    "expected_reps": [
+      {
+        "rep_index": 1,
+        "start_sec": 0.1,
+        "bottom_sec": 2.5,
+        "end_sec": 3.9,
+        "label": "correct",
+        "feedback_codes": []
+      },
+      {
+        "rep_index": 2,
+        "start_sec": 5.5,
+        "bottom_sec": 8.0,
+        "end_sec": 10.0,
+        "label": "correct",
+        "feedback_codes": []
+      }
+    ]
+  },
+  {
+    "id": "squat_004",
+    "video_path": "data/videos/squat_004.mp4",
+    "view": "side",
+    "expected_rep_count": 4,
+    "expected_partial_rep_count": 0,
+    "expected_video_codes": [],
+    "expected_reps": [
+      {
+        "rep_index": 1,
+        "start_sec": 1.0,
+        "bottom_sec": 2.5,
+        "end_sec": 4.0,
+        "label": "correct",
+        "feedback_codes": []
+      },
+      {
+        "rep_index": 2,
+        "start_sec": 4.5,
+        "bottom_sec": 6.6,
+        "end_sec": 8.3,
+        "label": "correct",
+        "feedback_codes": []
+      },
+      {
+        "rep_index": 3,
+        "start_sec": 9.0,
+        "bottom_sec": 10.2,
+        "end_sec": 12.0,
+        "label": "correct",
+        "feedback_codes": []
+      },
+      {
+        "rep_index": 4,
+        "start_sec": 12.2,
+        "bottom_sec": 14.1,
+        "end_sec": 16.0,
+        "label": "correct",
+        "feedback_codes": []
+      }
+    ]
+  },
+  {
+    "id": "squat_005",
+    "video_path": "data/videos/squat_005.mp4",
+    "view": "side",
+    "expected_rep_count": 4,
+    "expected_partial_rep_count": 0,
+    "expected_video_codes": [],
+    "expected_reps": [
+      {
+        "rep_index": 1,
+        "start_sec": 0.1,
+        "bottom_sec": 0.9,
+        "end_sec": 1.8,
+        "label": "correct",
+        "feedback_codes": []
+      },
+      {
+        "rep_index": 2,
+        "start_sec": 2.0,
+        "bottom_sec": 3.5,
+        "end_sec": 4.2,
+        "label": "correct",
+        "feedback_codes": []
+      },
+      {
+        "rep_index": 3,
+        "start_sec": 4.6,
+        "bottom_sec": 5.1,
+        "end_sec": 6.0,
+        "label": "correct",
+        "feedback_codes": []
+      },
+      {
+        "rep_index": 4,
+        "start_sec": 6.2,
+        "bottom_sec": 7.3,
+        "end_sec": 8.5,
         "label": "correct",
         "feedback_codes": []
       }

@@ -138,23 +138,28 @@ def check_depth(min_knee_angle: float, rep: int) -> Issue:
     각이 클수록 덜 앉은 것이다. 심각 임계(120°)를 넘으면 스쿼트라 보기 어려운
     수준이라 ERROR로 올려 rep 판정을 '잘못됨'으로 만든다.
     """
+    # 표시값과 판정값을 항상 같게 두려고 반올림 뒤에 비교한다. 원시 120.04°는
+    # 120.0°으로 표시되므로 판정도 120.0° 기준으로 내려야 "측정 120.0° / 기준
+    # 120.0° 이하"인데 ERROR인 모순이 생기지 않는다. (경계는 초과일 때만 승급)
     measured = round(min_knee_angle, 1)
-    if min_knee_angle > SQUAT_SEVERE_DEPTH_ANGLE:
+    if measured > SQUAT_SEVERE_DEPTH_ANGLE:
         return Issue(
             rep_index=rep, code="very_shallow_depth", severity=Severity.ERROR,
-            message="거의 앉지 않았습니다. 무릎을 훨씬 더 굽혀 엉덩이를 무릎 높이까지 내리세요.",
-            measured=measured,
+            message="거의 앉지 않았습니다. 이번 회차는 무릎을 훨씬 더 굽혀 "
+                    "엉덩이를 무릎 높이까지 내리세요.",
+            measured=measured, threshold=SQUAT_SEVERE_DEPTH_ANGLE,
         )
-    if min_knee_angle > SQUAT_GOOD_DEPTH_ANGLE:
+    if measured > SQUAT_GOOD_DEPTH_ANGLE:
         return Issue(
             rep_index=rep, code="shallow_depth", severity=Severity.WARNING,
-            message="깊이가 조금 모자랍니다. 허벅지가 바닥과 수평이 될 때까지 더 앉으세요.",
-            measured=measured,
+            message="깊이가 조금 모자랍니다. 이번 회차는 허벅지가 바닥과 수평이 될 "
+                    "때까지 더 앉으세요.",
+            measured=measured, threshold=SQUAT_GOOD_DEPTH_ANGLE,
         )
     return Issue(
         rep_index=rep, code="good_depth", severity=Severity.GOOD,
         message="충분한 깊이로 잘 앉았습니다.",
-        measured=measured,
+        measured=measured, threshold=SQUAT_GOOD_DEPTH_ANGLE,
     )
 
 
@@ -169,30 +174,33 @@ def check_torso(person: Person, rep: int) -> Issue | None:
     incline = _torso_lean(person)
     if incline is None:
         return None
-    if incline > SQUAT_TORSO_LEAN_HARD_MAX:
+    # 아래 diff와 같은 이유로 반올림 뒤에 비교한다(표시값 = 판정값).
+    if round(incline, 1) > SQUAT_TORSO_LEAN_HARD_MAX:
         return Issue(
             rep_index=rep, code="excessive_torso_lean", severity=Severity.ERROR,
             message="상체가 거의 수평까지 숙여졌습니다. 허리 부상 위험이 크니 "
-                    "가슴을 세우고 다시 앉으세요.",
-            measured=round(incline, 1),
+                    "이번 회차는 가슴을 세우고 시선을 앞에 둔 채 다시 앉으세요.",
+            measured=round(incline, 1), threshold=SQUAT_TORSO_LEAN_HARD_MAX,
         )
     shin = _shin_incline(person)
     if shin is None:
         return None  # 다리가 안 보이면 상대 판정은 보류(절대 상한만 위에서 검사)
+    # 표시값과 판정값을 같게 두려고 반올림 뒤에 비교한다. 따라서 원시 25.04°는
+    # 25.0°이 되어 경고가 아니다(경계는 '초과일 때만 승급'이므로 의도된 동작).
     diff = round(incline - shin, 1)
     if diff > SQUAT_TORSO_SHIN_DIFF_SEVERE:
         return Issue(
             rep_index=rep, code="excessive_torso_lean", severity=Severity.ERROR,
-            message="엉덩이만 뒤로 빠지고 상체가 접히는 굿모닝 자세입니다. "
-                    "허리 부담이 크니 가슴을 세우고 무릎을 함께 굽히세요.",
-            measured=diff,
+            message="엉덩이만 뒤로 빠지고 상체가 접히는 굿모닝 자세입니다. 허리 부담이 "
+                    "크니 이번 회차는 무릎을 먼저 굽혀 앉으면서 가슴을 세우세요.",
+            measured=diff, threshold=SQUAT_TORSO_SHIN_DIFF_SEVERE,
         )
     if diff > SQUAT_TORSO_SHIN_DIFF_WARN:
         return Issue(
             rep_index=rep, code="torso_lean", severity=Severity.WARNING,
-            message="상체가 정강이보다 과하게 앞으로 접혔습니다. "
-                    "엉덩이를 덜 빼고 가슴을 세우며 앉으세요.",
-            measured=diff,
+            message="상체가 정강이보다 과하게 앞으로 접혔습니다. 이번 회차는 엉덩이를 "
+                    "덜 빼고 가슴을 세운 채 무릎을 굽혀 앉으세요.",
+            measured=diff, threshold=SQUAT_TORSO_SHIN_DIFF_WARN,
         )
     return None
 
@@ -304,7 +312,7 @@ class SquatAnalyzer(ExerciseAnalyzer):
                     rep_index=0, code="not_side_view", severity=Severity.ERROR,
                     message="측면 촬영이 아닌 것으로 보입니다. 옆에서 다시 촬영해 주세요. "
                             "(정면 영상에서는 깊이·상체 판정이 부정확합니다)",
-                    measured=round(ratio, 2),
+                    measured=round(ratio, 2), threshold=SIDE_VIEW_RATIO_MAX,
                 ))
 
         # 앉은 상태(DOWN)에서 영상이 끝나면 그 rep은 상태기계가 완료를 못 본다.

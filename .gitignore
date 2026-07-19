@@ -4,6 +4,10 @@ __pycache__/
 # Downloaded model weights
 models/*.pt
 
+# Input videos and analysis output (large binaries, kept local)
+data/videos/
+data/output/
+
 # Local environment files
 .venv/
 venv/

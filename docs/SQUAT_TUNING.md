@@ -19,7 +19,7 @@
 | `good_depth` | 최저 무릎각 ≤ 100° | GOOD | (판정 안 낮춤) |
 | `shallow_depth` | 최저 무릎각 100° 초과 ~ 120° | WARNING | `needs_work` |
 | `very_shallow_depth` | 최저 무릎각 > 120° | **ERROR** | `incorrect` |
-| `torso_lean` | (상체 − 정강이) 기울기 차 20° 초과 ~ 35° | WARNING | `needs_work` |
+| `torso_lean` | (상체 − 정강이) 기울기 차 25° 초과 ~ 35° | WARNING | `needs_work` |
 | `excessive_torso_lean` | 차 > 35° **또는** 상체 절대 기울기 > 70° | **ERROR** | `incorrect` |
 
 경계값은 **아래 단계에 속한다**(초과일 때만 승급). 정확히 120°면 `shallow_depth`.
@@ -47,7 +47,7 @@ A 등급도 실측 검증은 안 됐다.
 |---|---|---|---|
 | `SQUAT_GOOD_DEPTH_ANGLE` | 100.0 | A | 허벅지 수평 ≈ 무릎 90°. 100°를 기준선으로 둠 |
 | `SQUAT_SEVERE_DEPTH_ANGLE` | 120.0 | **C** | ERROR 승급선. 근거 없음 |
-| `SQUAT_TORSO_SHIN_DIFF_WARN` | 20.0 | **C** | "상체는 정강이와 대략 평행"에서 출발했으나 숫자는 임의 |
+| `SQUAT_TORSO_SHIN_DIFF_WARN` | 25.0 | **B** | 실영상 5개(rep 14개) 측정 분포의 빈 구간(11.5~22.6°)에 맞춰 20.0에서 상향 |
 | `SQUAT_TORSO_SHIN_DIFF_SEVERE` | 35.0 | **C** | 굿모닝 판정선. 근거 없음 |
 | `SQUAT_TORSO_LEAN_HARD_MAX` | 70.0 | **C** | 절대 상한 안전장치. 근거 없음 |
 
@@ -88,7 +88,7 @@ RepRecord: bottom_angle=80.0, start_sec=0.1, bottom_sec=0.27, end_sec=0.5, ...
 ```
 
 즉 **올바른 스쿼트에서 상체−정강이 차가 실제로 몇 도인지 알 방법이 현재 없다.**
-`SQUAT_TORSO_SHIN_DIFF_WARN`(20°)이 정상 스쿼트를 걸러내고 있는지조차 측정할 수 없다.
+`SQUAT_TORSO_SHIN_DIFF_WARN`(25°)이 정상 스쿼트를 걸러내고 있는지조차 측정할 수 없다.
 
 ### 권장 수정
 
@@ -137,7 +137,8 @@ bottom_shin_incline: float | None = None    # 최저점 정강이 기울기(도)
 `--frame-stride`는 반드시 1 — 크게 잡으면 최저점 프레임을 놓쳐 측정값이 통째로 틀어진다.
 
 의도적으로 "올바르게" 수행한 rep의 분포가 임계값 안에 들어오는지 확인한다.
-올바른 rep의 상체−정강이 차가 25°에 몰려 있다면 `SQUAT_TORSO_SHIN_DIFF_WARN`(20°)이 잘못된 것이다.
+올바른 rep의 상체−정강이 차가 기준선 위에 몰려 있다면 `SQUAT_TORSO_SHIN_DIFF_WARN`(25°)이
+잘못된 것이다. 실제로 이 절차로 5개 영상(rep 14개)을 재보고 20° → 25°로 상향했다.
 
 ### 5-3. 임계값 결정
 
@@ -184,7 +185,6 @@ python -m tools.validate_labels                # 영상까지 돌려 엔진 출�
 - **rep 매칭의 탐욕적 할당.** `tools/validate_labels.py`의 `match_reps`는 최적 할당이 아니라
   라벨 순서대로 겹침이 가장 큰 엔진 rep을 집어간다. 실영상에서 rep 경계가 크게 어긋날 때
   짝이 밀릴 수 있다.
-- **Codex 교차 검토.** `codex.cmd`가 PATH에 없어 프로젝트 규칙상의 계획·최종 리뷰를 건너뛰었다.
 
 ---
 

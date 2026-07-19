@@ -39,7 +39,7 @@ def _detection_gate(report: Report, processed: int, with_person: int) -> None:
             rep_index=0, code="low_detection", severity=Severity.WARNING,
             message="영상에서 사람이 안정적으로 검출되지 않아 결과가 부정확할 수 있습니다. "
                     "전신이 나오도록 밝은 곳에서 다시 촬영해 주세요.",
-            measured=round(ratio, 2),
+            measured=round(ratio, 2), threshold=MIN_PERSON_RATIO,
         ))
 
 

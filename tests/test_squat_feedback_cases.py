@@ -35,7 +35,7 @@ def _person(knee_angle: float, torso: str) -> list[Keypoint]:
     hip = _hip_for_angle(knee, ankle, knee_angle)
     shoulder = (hip[0], hip[1] - 100.0)
     if torso == "leaning":
-        # 약 29도 앞기울임 → WARNING(torso_lean) 구간(20~35도)
+        # 약 29도 앞기울임 → WARNING(torso_lean) 구간(25~35도)
         shoulder = (hip[0] + 100.0, hip[1] - 180.0)
     return _set(
         _blank(),

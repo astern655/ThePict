@@ -131,8 +131,8 @@
 
 | 코드 | 조건 | 심각도 |
 |---|---|---|
-| (없음) | 차이 ≤ `SQUAT_TORSO_SHIN_DIFF_WARN`(**20°**) 이고 절대 기울기 ≤ 70° | — |
-| `torso_lean` | 차이 20° 초과 ~ `SQUAT_TORSO_SHIN_DIFF_SEVERE`(**35°**) 이하 | WARNING |
+| (없음) | 차이 ≤ `SQUAT_TORSO_SHIN_DIFF_WARN`(**25°**) 이고 절대 기울기 ≤ 70° | — |
+| `torso_lean` | 차이 25° 초과 ~ `SQUAT_TORSO_SHIN_DIFF_SEVERE`(**35°**) 이하 | WARNING |
 | `excessive_torso_lean` | 차이 35° 초과, **또는** 절대 기울기 > `SQUAT_TORSO_LEAN_HARD_MAX`(**70°**) | ERROR |
 
 - 측정: 상체 = `torso_incline(어깨, 엉덩이)`, 정강이 = 같은 계산을 (무릎, 발목)에 적용.

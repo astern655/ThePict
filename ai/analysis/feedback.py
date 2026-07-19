@@ -62,6 +62,12 @@ class Issue:
     severity: Severity
     message: str            # 사용자에게 보여줄 한국어 문장
     measured: float | None = None  # 측정값 (디버깅/표시용)
+    # 이 항목을 발생시킨 기준선. measured와 같은 지표·같은 단위여야 한다.
+    # (예: torso_lean이면 상체−정강이 차의 WARNING 임계값 25.0)
+    # 임계값이 나중에 바뀌어도 저장된 리포트를 그대로 해석할 수 있게 함께 남긴다.
+    # 넘는 쪽이 결함인지 모자란 쪽이 결함인지는 코드마다 다르다. rep 결함(깊이·상체)은
+    # 전부 '초과가 결함'이고, 영상 수준의 low_detection만 '미만이 결함'이다.
+    threshold: float | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -70,6 +76,7 @@ class Issue:
             "severity": self.severity.value,
             "message": self.message,
             "measured": self.measured,
+            "threshold": self.threshold,
         }
 
 
@@ -173,6 +180,31 @@ class Report:
             counts[self.rep_verdict(rep).value] += 1
         return counts
 
+    def _rep_coaching_lines(self, rep: int) -> list[str]:
+        """한 rep의 판정 헤더 + 결함별 '무엇을 어떻게' 안내 줄.
+
+        헤더에 최저점 시각을 붙여 UI/사용자가 영상의 해당 지점을 바로 찾게 한다.
+        fps를 모르면 bottom_sec이 None이므로 시각 없이 헤더만 낸다.
+        """
+        v = self.rep_verdict(rep)
+        header = f"{_VERDICT_MARK[v]} {rep}회차 · {_VERDICT_LABEL[v]}"
+        record = self.rep_record(rep)
+        if record is not None and record.bottom_sec is not None:
+            header += f" · 최저점 {record.bottom_sec:.2f}초"
+        out = [header]
+
+        # GOOD 항목은 결함이 아니므로 교정 안내에서 뺀다.
+        for issue in self.issues_for_rep(rep):
+            if issue.severity is Severity.GOOD:
+                continue
+            line = f"   └ {issue.message}"
+            if issue.measured is not None and issue.threshold is not None:
+                line += f" (측정 {issue.measured}° / 기준 {issue.threshold}° 이하)"
+            elif issue.measured is not None:
+                line += f" (측정 {issue.measured}°)"
+            out.append(line)
+        return out
+
     def summary_lines(self) -> list[str]:
         """UI에 뿌리기 좋은 요약 문장 리스트."""
         lines = [f"운동: {self.exercise}", f"총 반복: {self.rep_count}회"]
@@ -191,13 +223,7 @@ class Report:
                 f"교정 필요 {c['needs_work']}회 · 잘못됨 {c['incorrect']}회"
             )
             for rep in range(1, self.rep_count + 1):
-                v = self.rep_verdict(rep)
-                detail = "; ".join(
-                    i.message for i in self.issues_for_rep(rep)
-                    if i.severity is not Severity.GOOD
-                )
-                line = f"{_VERDICT_MARK[v]} [{rep}회차] {_VERDICT_LABEL[v]}"
-                lines.append(f"{line} — {detail}" if detail else line)
+                lines.extend(self._rep_coaching_lines(rep))
             return lines
 
         if not self.issues:

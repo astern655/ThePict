@@ -87,7 +87,7 @@ flowchart LR
 | `AnalysisJob` | id, user_id, exercise_type, status, original_video_path, annotated_video_path, error_message, created_at | 비동기 작업 추적 |
 | `WorkoutResult` | id, analysis_job_id, rep_count, camera_view, frames_processed, duration_seconds | 완료된 분석 결과 요약 |
 | `RepVerdict` | id, workout_result_id, rep_index, verdict(correct/needs_work/incorrect) | rep별 종합 판정(초록/노랑/빨강) |
-| `FormIssue` | id, workout_result_id, rep_index, code, severity, message, measured_value | rep별 자세 문제 상세 |
+| `FormIssue` | id, workout_result_id, rep_index, code, severity, message, measured_value, threshold | rep별 자세 문제 상세 |
 
 영상 바이너리는 DB에 넣지 않고 경로/URL만 저장한다. `camera_view`·`RepVerdict` 는 AI 엔진이
 새로 내려주는 값이므로 스키마에 반영해 저장한다(`measured_value` ← 엔진 `measured`).
@@ -135,6 +135,8 @@ flowchart LR
 > - `Report.to_dict()` 의 `annotated_video_path` 는 **서버 로컬 파일 경로**다. 백엔드가 정적
 >   서빙 URL(`annotated_video_url`)로 변환해서 내려줘야 하며, 로컬 경로를 그대로 노출하지 않는다.
 > - 각 결함의 값 필드 이름은 엔진에서는 `measured` 다(아래 DB의 `measured_value` 와 매핑).
+>   같은 항목의 `threshold` 는 그 값을 발생시킨 기준선이며 `measured` 와 **같은 지표·단위**다.
+>   임계값이 나중에 바뀌어도 과거 리포트를 그대로 해석할 수 있게 함께 저장한다.
 > - 스쿼트는 **측면 촬영 전용**이라 깊이·상체숙임만 판정한다(`camera_view` 는 항상 `"side"`).
 >   정면 전용 규칙(무릎모임·비대칭)은 정면 촬영을 도입할 때 추가한다.
 > - 잘못된 입력에 대해 엔진은 `FileNotFoundError`/`RuntimeError` 를 던진다. Worker 가 잡아
