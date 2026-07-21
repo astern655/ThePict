@@ -1,0 +1,57 @@
+# ── 비밀·데이터 (절대 커밋 금지) ─────────────────────────
+# 로컬 SQLite DB — 사용자 계정과 비밀번호 해시가 들어 있다.
+*.db
+*.sqlite
+*.sqlite3
+# 환경 변수 / 시크릿
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets.json
+
+# ── Python (backend) ─────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+
+# ── Flutter / Dart (app) ─────────────────────────────────
+# 대부분은 app/.gitignore가 관리하지만, 루트에서도 방어한다.
+app/build/
+app/.dart_tool/
+app/.flutter-plugins
+app/.flutter-plugins-dependencies
+app/.packages
+app/pubspec.lock
+# 웹은 플랫폼 재생성 가능 산출물 — 소스가 아니다.
+app/web/
+
+# ── Node (실수로 생긴 것 방지) ───────────────────────────
+node_modules/
+package-lock.json
+
+# ── 도구·검증 잔여물 ─────────────────────────────────────
+.playwright-mcp/
+*.png
+!docs/**/*.png
+# 대화 중 만든 임시 검증 스크립트
+_*.py
+
+# ── Claude Code (로컬 도구 설정 — 저장소에 올리지 않음) ──
+.claude/
+
+# ── OS / 에디터 ──────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.swp
+*~

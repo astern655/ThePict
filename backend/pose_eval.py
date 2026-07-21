@@ -1,0 +1,121 @@
+"""Rule-based pose evaluation. Pure math — no dependency on any pose estimator."""
+
+import math
+
+# COCO 17-keypoint names, in the standard COCO order.
+KEYPOINT_NAMES = [
+    "nose", "left_eye", "right_eye", "left_ear", "right_ear",
+    "left_shoulder", "right_shoulder", "left_elbow", "right_elbow",
+    "left_wrist", "right_wrist", "left_hip", "right_hip",
+    "left_knee", "right_knee", "left_ankle", "right_ankle",
+]
+
+MIN_CONFIDENCE = 0.3  # below this, a keypoint is treated as not detected
+
+
+def angle(a: dict, b: dict, c: dict) -> float:
+    """Angle at vertex b (degrees), formed by points a-b-c."""
+    ab = (a["x"] - b["x"], a["y"] - b["y"])
+    cb = (c["x"] - b["x"], c["y"] - b["y"])
+    dot = ab[0] * cb[0] + ab[1] * cb[1]
+    mag_ab = math.hypot(*ab)
+    mag_cb = math.hypot(*cb)
+    if mag_ab == 0 or mag_cb == 0:
+        return 0.0
+    cos_theta = max(-1.0, min(1.0, dot / (mag_ab * mag_cb)))
+    return math.degrees(math.acos(cos_theta))
+
+
+def is_detected(keypoints: list[dict]) -> bool:
+    """Low-confidence frame -> not enough signal to evaluate a rep."""
+    if not keypoints:
+        return False
+    confident = sum(1 for kp in keypoints if kp.get("confidence", 0) >= MIN_CONFIDENCE)
+    return confident >= len(KEYPOINT_NAMES) * 0.7
+
+
+def _by_name(keypoints: list[dict]) -> dict:
+    return {kp["name"]: kp for kp in keypoints}
+
+
+# TODO(Q5): thresholds are literature rule-of-thumb, not validated against
+# real user data yet — revisit once we have labeled squat footage.
+RULES = {
+    "squat": {
+        "knee_angle_min": 70,   # deep squat: knee flexes well past parallel
+        "knee_angle_max": 100,  # standing/too shallow above this
+        "hip_angle_min": 60,
+        "hip_angle_max": 100,
+        "back_angle_max": 45,  # torso-to-vertical; too high = excessive forward lean
+    },
+}
+
+
+def _check(name: str, value: float, low: float, high: float, message_bad: str) -> dict:
+    ok = low <= value <= high
+    return {
+        "name": name,
+        "value": round(value, 1),
+        "status": "ok" if ok else "bad",
+        "message": "" if ok else message_bad,
+    }
+
+
+def evaluate(keypoints: list[dict], exercise_id: str) -> dict:
+    if exercise_id not in RULES:
+        return {
+            "exercise_id": exercise_id,
+            "form_score": 0.0,
+            "verdict": "unsupported",
+            "checks": [],
+        }
+
+    rules = RULES[exercise_id]
+    pts = _by_name(keypoints)
+
+    # Use the side with higher-confidence keypoints.
+    def side_conf(prefix: str) -> float:
+        names = [f"{prefix}_hip", f"{prefix}_knee", f"{prefix}_ankle", f"{prefix}_shoulder"]
+        vals = [pts[n]["confidence"] for n in names if n in pts]
+        return sum(vals) / len(vals) if vals else 0.0
+
+    side = "left" if side_conf("left") >= side_conf("right") else "right"
+    hip = pts[f"{side}_hip"]
+    knee = pts[f"{side}_knee"]
+    ankle = pts[f"{side}_ankle"]
+    shoulder = pts[f"{side}_shoulder"]
+
+    knee_angle = angle(hip, knee, ankle)
+    hip_angle = angle(shoulder, hip, knee)
+    # torso angle vs. vertical, using shoulder-hip line
+    vertical_ref = {"x": hip["x"], "y": hip["y"] - 100}
+    back_angle = angle(shoulder, hip, vertical_ref)
+
+    checks = [
+        _check(
+            "knee_angle", knee_angle,
+            rules["knee_angle_min"], rules["knee_angle_max"],
+            "무릎 각도가 적정 범위를 벗어났습니다",
+        ),
+        _check(
+            "hip_angle", hip_angle,
+            rules["hip_angle_min"], rules["hip_angle_max"],
+            "고관절 각도가 적정 범위를 벗어났습니다",
+        ),
+        _check(
+            "back_angle", back_angle,
+            0, rules["back_angle_max"],
+            "허리가 과도하게 숙여졌습니다",
+        ),
+    ]
+
+    ok_count = sum(1 for c in checks if c["status"] == "ok")
+    form_score = round(100 * ok_count / len(checks), 1)
+    verdict = "good" if ok_count == len(checks) else "needs_improvement"
+
+    return {
+        "exercise_id": exercise_id,
+        "form_score": form_score,
+        "verdict": verdict,
+        "checks": checks,
+    }
