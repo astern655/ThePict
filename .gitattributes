@@ -1,0 +1,11 @@
+# 텍스트 파일 줄바꿈을 저장소에서 LF로 통일한다 (팀원 OS 차이로 인한 diff 노이즈 방지).
+* text=auto eol=lf
+
+# Windows 전용 스크립트는 CRLF 유지.
+*.bat text eol=crlf
+
+# 바이너리는 손대지 않는다.
+*.otf binary
+*.ttf binary
+*.png binary
+*.ico binary

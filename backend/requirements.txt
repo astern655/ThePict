@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+pytest
+httpx
+python-multipart
+
+# AI 엔진(저장소 루트 ai/)은 별도 의존성을 쓴다. 실제 YOLO 추론이나
+# /inference/video 를 쓰려면 루트의 requirements.txt 도 함께 설치한다:
+#   pip install -r ../requirements.txt
+# 설치하지 않아도 인증·세션·프로그램 API와 스텁 추정기는 그대로 동작한다.

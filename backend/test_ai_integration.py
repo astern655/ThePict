@@ -1,0 +1,212 @@
+"""백엔드 ↔ AI 엔진(`ai/`) 접합부 테스트.
+
+ML 런타임 없이도 돌아야 하므로, 무거운 의존성이 필요한 것은 skip으로 빠진다.
+대신 '리포트 → 세트 변환'과 '임계값 동기화'는 의존성 없이 전부 검증한다.
+"""
+
+import os
+import tempfile
+
+os.environ.setdefault("HOHOWATT_DB", os.path.join(tempfile.gettempdir(), "hohowatt_test.db"))
+
+import pytest
+from fastapi.testclient import TestClient
+
+import ai_bridge
+import analysis
+import db
+import main
+import pose_eval
+import video_analysis
+
+client = TestClient(main.app)
+
+
+@pytest.fixture(autouse=True)
+def reset_store():
+    db.reset()
+    yield
+
+
+def register_and_login(email="video@test.com", password="pw123"):
+    r = client.post("/auth/register", json={"email": email, "password": password})
+    assert r.status_code == 201
+    return r.json()["token"]
+
+
+def auth_headers(token):
+    return {"Authorization": f"Bearer {token}"}
+
+
+# ---- 임계값 동기화 -------------------------------------------------------
+# pose_eval.RULES가 AI 엔진의 기준을 복사해 들고 있다. 엔진 쪽만 튜닝하고
+# 여기를 잊으면 사용자에게 틀린 목표 범위를 안내하게 되므로 테스트로 묶는다.
+
+
+def test_rules_match_ai_engine_thresholds():
+    try:
+        config = ai_bridge.load_config()
+    except ai_bridge.EngineUnavailable:
+        pytest.skip("ai 패키지 없음")
+    rules = pose_eval.RULES["squat"]
+    assert rules["squat_depth_max"] == config.SQUAT_GOOD_DEPTH_ANGLE
+    assert rules["torso_shin_diff_max"] == config.SQUAT_TORSO_SHIN_DIFF_WARN
+
+
+def test_video_checks_have_analysis_metadata():
+    """video_analysis가 내는 check 이름을 analysis.py가 문장으로 바꿀 수 있어야 한다."""
+    for name in (video_analysis.DEPTH_CHECK, video_analysis.TORSO_CHECK):
+        assert name in analysis.CHECK_META
+        _, hi_key = analysis.CHECK_META[name]["range"]
+        assert hi_key in pose_eval.RULES["squat"]
+
+
+# ---- 리포트 → 세트 변환 --------------------------------------------------
+
+
+def _report(rep_verdicts, issues):
+    return {
+        "rep_count": len(rep_verdicts),
+        "rep_verdicts": [
+            {"rep_index": i + 1, "verdict": v} for i, v in enumerate(rep_verdicts)
+        ],
+        "issues": issues,
+    }
+
+
+def _issue(rep, code, severity, measured):
+    return {"rep_index": rep, "code": code, "severity": severity, "measured": measured}
+
+
+def test_to_set_scores_all_correct_reps_at_100():
+    report = _report(
+        ["correct", "correct"],
+        [
+            _issue(1, "good_depth", "good", 90.0),
+            _issue(2, "good_depth", "good", 92.0),
+        ],
+    )
+    s = video_analysis.to_set(report)
+    assert s == {
+        "reps": 2,
+        "form_score": 100.0,
+        "checks": [
+            {"name": "squat_depth", "value": 91.0, "status": "ok", "message": ""},
+        ],
+    }
+
+
+def test_to_set_averages_verdict_scores_and_flags_bad_depth():
+    report = _report(
+        ["correct", "incorrect"],
+        [
+            _issue(1, "good_depth", "good", 90.0),
+            _issue(2, "very_shallow_depth", "error", 130.0),
+        ],
+    )
+    s = video_analysis.to_set(report)
+    assert s["form_score"] == 65.0  # (100 + 30) / 2
+    depth = next(c for c in s["checks"] if c["name"] == "squat_depth")
+    assert depth["status"] == "bad"
+    assert depth["value"] == 110.0
+
+
+def test_to_set_reports_torso_only_when_engine_measured_it():
+    """정상 rep은 상체 측정값을 남기지 않는다 — 재지 않은 값을 지어내면 안 된다."""
+    clean = video_analysis.to_set(
+        _report(["correct"], [_issue(1, "good_depth", "good", 90.0)])
+    )
+    assert [c["name"] for c in clean["checks"]] == ["squat_depth"]
+
+    leaning = video_analysis.to_set(
+        _report(
+            ["needs_work"],
+            [
+                _issue(1, "good_depth", "good", 90.0),
+                _issue(1, "torso_lean", "warning", 30.0),
+            ],
+        )
+    )
+    torso = next(c for c in leaning["checks"] if c["name"] == "torso_shin_diff")
+    assert torso == {
+        "name": "torso_shin_diff",
+        "value": 30.0,
+        "status": "bad",
+        "message": "1회차에서 상체가 과하게 앞으로 접혔습니다",
+    }
+
+
+def test_to_set_handles_zero_reps():
+    s = video_analysis.to_set(_report([], []))
+    assert s == {"reps": 0, "form_score": 0.0, "checks": []}
+
+
+def test_analysis_builds_sentences_from_video_checks():
+    """영상 분석이 만든 세트가 기존 문장 분석 경로를 그대로 탄다."""
+    video_set = video_analysis.to_set(
+        _report(
+            ["needs_work"],
+            [
+                _issue(1, "shallow_depth", "warning", 115.0),
+                _issue(1, "torso_lean", "warning", 30.0),
+            ],
+        )
+    )
+    session = {
+        "id": "s1",
+        "exercise_id": "squat",
+        "date": "2026-07-22",
+        "avg_form_score": video_set["form_score"],
+        "sets": [video_set],
+    }
+    result = analysis.build(session, None, "스쿼트")
+    assert result["has_joint_data"] is True
+    assert any("앉은 깊이" in b for b in result["bad"])
+    assert any("상체 앞숙임" in b for b in result["bad"])
+    assert result["next"]  # 교정 지시가 최소 하나는 나온다
+
+
+# ---- 엔드포인트 ----------------------------------------------------------
+
+
+def test_video_endpoint_requires_auth():
+    r = client.post(
+        "/inference/video",
+        data={"exercise_id": "squat"},
+        files={"video": ("clip.mp4", b"\x00\x01", "video/mp4")},
+    )
+    assert r.status_code == 401
+
+
+def test_video_endpoint_rejects_empty_upload():
+    token = register_and_login("video2@test.com")
+    r = client.post(
+        "/inference/video",
+        headers=auth_headers(token),
+        data={"exercise_id": "squat"},
+        files={"video": ("clip.mp4", b"", "video/mp4")},
+    )
+    assert r.status_code == 400
+
+
+def test_video_endpoint_rejects_unsupported_exercise():
+    token = register_and_login("video3@test.com")
+    r = client.post(
+        "/inference/video",
+        headers=auth_headers(token),
+        data={"exercise_id": "deadlift"},
+        files={"video": ("clip.mp4", b"\x00\x01", "video/mp4")},
+    )
+    assert r.status_code == 400
+
+
+def test_video_endpoint_rejects_garbage_video():
+    """의존성이 없으면 503, 있으면 열 수 없는 파일이라 400. 500은 어느 쪽도 아니다."""
+    token = register_and_login("video4@test.com")
+    r = client.post(
+        "/inference/video",
+        headers=auth_headers(token),
+        data={"exercise_id": "squat"},
+        files={"video": ("clip.mp4", b"not a video at all", "video/mp4")},
+    )
+    assert r.status_code in (400, 503)
