@@ -166,6 +166,43 @@ def test_analysis_builds_sentences_from_video_checks():
     assert result["next"]  # 교정 지시가 최소 하나는 나온다
 
 
+# ---- 실측/더미 구분 ------------------------------------------------------
+# 앱이 "이 판정이 진짜 측정인가"를 알 수 있어야 한다. 이 필드가 없으면 stub이
+# 지어낸 좌표로 만든 교정 지시가 실측인 양 사용자에게 나간다.
+
+PNG_BYTES = (
+    b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06"
+    b"\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00"
+    b"\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+)
+
+
+def test_pose_response_marks_stub_output_as_not_measured(monkeypatch):
+    import pose_estimator
+
+    monkeypatch.delenv("POSE_ESTIMATOR", raising=False)
+    monkeypatch.setattr(pose_estimator, "_estimator_cache", None)
+    token = register_and_login("stub@test.com")
+    r = client.post(
+        "/inference/pose",
+        headers=auth_headers(token),
+        data={"exercise_id": "squat"},
+        files={"frame": ("frame.png", PNG_BYTES, "image/png")},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["estimator"] == "stub"
+    assert body["measured"] is False
+
+
+def test_stub_and_yolo_disagree_on_measured_flag():
+    """플래그가 상수로 굳지 않았는지 — 두 추정기가 서로 다른 값을 내야 의미가 있다."""
+    import pose_estimator
+
+    assert pose_estimator.StubPoseEstimator.measures_real_image is False
+    assert pose_estimator.YoloPoseEstimator.measures_real_image is True
+
+
 # ---- 엔드포인트 ----------------------------------------------------------
 
 

@@ -397,12 +397,18 @@ async def inference_pose(
     if not image_bytes or not _is_image(image_bytes):
         raise HTTPException(status_code=400, detail="invalid image")
 
-    result = pose_estimator.get_estimator().estimate(image_bytes)
+    estimator = pose_estimator.get_estimator()
+    result = estimator.estimate(image_bytes)
     detected = pose_eval.is_detected(result.keypoints)
     evaluation = pose_eval.evaluate(result.keypoints, exercise_id) if detected else None
 
+    # estimator/measured를 반드시 함께 내려보낸다. stub은 이미지를 보지 않고 그럴듯한
+    # 좌표를 지어내므로, 그 판정을 실측인 양 세션에 저장하면 분석이 근거 없는 교정
+    # 지시를 만들어 낸다. 클라이언트는 measured=false면 checks를 버려야 한다.
     return {
         "detected": detected,
+        "estimator": estimator.name,
+        "measured": estimator.measures_real_image,
         "keypoints": result.keypoints,
         "evaluation": evaluation,
     }

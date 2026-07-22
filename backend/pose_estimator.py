@@ -15,6 +15,12 @@ class PoseResult:
 
 
 class PoseEstimator(ABC):
+    # 응답에 실려 나가는 식별자. 클라이언트가 "이 좌표가 실측인가 더미인가"를
+    # 판단하는 유일한 근거다 — 더미로 계산한 판정을 실측인 양 저장하면 안 된다.
+    name: str = "unknown"
+    # 이 추정기의 출력이 실제 이미지에서 나온 것인가.
+    measures_real_image: bool = False
+
     @abstractmethod
     def estimate(self, image_bytes: bytes) -> PoseResult:
         """Run pose estimation on a single image and return COCO-17 keypoints
@@ -25,6 +31,9 @@ class PoseEstimator(ABC):
 class StubPoseEstimator(PoseEstimator):
     """Deterministic, plausible-looking keypoints for local dev / tests
     without a real model. Not tied to actual image content."""
+
+    name = "stub"
+    measures_real_image = False
 
     def estimate(self, image_bytes: bytes) -> PoseResult:
         if not image_bytes:
@@ -53,6 +62,9 @@ class YoloPoseEstimator(PoseEstimator):
     detector는 인스턴스에 물려 재사용한다 — YOLO 가중치 로딩은 초 단위로 비싸서
     요청마다 새로 만들면 안 된다(`get_estimator()` 가 인스턴스를 캐싱한다).
     """
+
+    name = "yolo"
+    measures_real_image = True
 
     def __init__(self):
         PoseDetector = ai_bridge.load_detector_class()

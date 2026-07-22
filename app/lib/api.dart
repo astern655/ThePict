@@ -6,8 +6,13 @@ class Api {
   Api._();
   static final Api instance = Api._();
 
-  // 로컬 백엔드. Android 에뮬레이터에서 테스트 시 10.0.2.2로 교체.
-  static const String baseUrl = 'http://localhost:8000';
+  /// 백엔드 주소. 기본은 로컬 웹 개발용이다.
+  ///
+  /// Android 에뮬레이터(호스트가 10.0.2.2)나 실기기에서는 빌드할 때 넘긴다:
+  ///   flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8000
+  /// 컴파일 타임 상수라 `dart:io` 없이 웹/모바일 모두에서 동작한다.
+  static const String baseUrl =
+      String.fromEnvironment('API_BASE_URL', defaultValue: 'http://localhost:8000');
 
   String? token;
 
@@ -38,6 +43,10 @@ class Api {
         return '이미 가입된 이메일이에요. 로그인으로 진행해 주세요.';
       case 400:
         return '입력한 내용을 처리할 수 없어요. 값을 확인해 주세요.';
+      case 413:
+        return '영상이 너무 커요. 한 세트 분량(100MB 이하)으로 다시 찍어 주세요.';
+      case 503:
+        return '자세 분석 기능이 지금 준비되지 않았어요. 잠시 후 다시 시도해 주세요.';
       default:
         return '서버와 연결하지 못했어요. 잠시 후 다시 시도해 주세요.';
     }
@@ -166,11 +175,13 @@ class Api {
     return _decode(res) as Map<String, dynamic>;
   }
 
-  /// 프레임 한 장을 자세 판정에 넘긴다 → `{detected, keypoints, evaluation{form_score, verdict, checks[]}}`.
+  /// 프레임 한 장을 자세 판정에 넘긴다.
+  /// → `{detected, estimator, measured, keypoints, evaluation{form_score, verdict, checks[]}}`
   ///
-  /// 카메라가 붙기 전까지는 [placeholderFrame]을 쓴다. 백엔드의 StubPoseEstimator는
-  /// 이미지 내용을 보지 않지만 **각도 계산과 판정은 실제 pose_eval이 수행**하므로,
-  /// 여기서 받은 checks는 진짜 파이프라인 산출물이다. 카메라가 생기면 프레임만 갈아끼우면 된다.
+  /// **`measured`가 false면 좌표가 더미다.** 백엔드가 `POSE_ESTIMATOR=stub`으로 떠 있다는
+  /// 뜻이며, 그 좌표로 계산한 checks는 이미지와 아무 관계가 없다. 각도 계산 자체는 진짜
+  /// 코드가 돌지만 입력이 가짜라 결과도 가짜다 — 절대 세션에 저장하면 안 된다.
+  /// 저장하면 분석이 지어낸 값으로 "엉덩이를 더 빼세요" 같은 교정 지시를 만들어 낸다.
   Future<Map<String, dynamic>> postPoseFrame({
     required String exerciseId,
     required List<int> frameBytes,
@@ -183,8 +194,32 @@ class Api {
     return _decode(res) as Map<String, dynamic>;
   }
 
+  /// 운동 영상 한 편을 AI 엔진에 넘겨 실제 분석을 받는다.
+  /// → `{report{rep_count, rep_verdicts[], issues[], summary[], ...}, set{reps, form_score, checks[]}}`
+  ///
+  /// [postPoseFrame]과 달리 여기는 **항상 실제 YOLO 엔진**이 돈다(stub 경로가 없다).
+  /// 반환된 `set`은 그대로 [postSession]의 sets에 넣을 수 있다.
+  ///
+  /// 스쿼트는 **측면 촬영**만 받는다. 정면 영상이면 report의 `video_issues`에 경고가 붙는다.
+  /// 분석은 영상 길이에 비례해 수 초~수십 초 걸리므로 호출부는 진행 표시를 띄워야 한다.
+  Future<Map<String, dynamic>> postWorkoutVideo({
+    required String exerciseId,
+    required List<int> videoBytes,
+    String filename = 'workout.mp4',
+  }) async {
+    final req = http.MultipartRequest('POST', _uri('/inference/video'))
+      ..fields['exercise_id'] = exerciseId
+      ..files.add(http.MultipartFile.fromBytes('video', videoBytes, filename: filename));
+    if (token != null) req.headers['Authorization'] = 'Bearer $token';
+    final res = await http.Response.fromStream(await req.send());
+    return _decode(res) as Map<String, dynamic>;
+  }
+
   /// 1x1 투명 PNG. 카메라 프레임이 없을 때 자세 판정 파이프라인을 태우기 위한 자리표시자.
-  /// 백엔드가 `imghdr`로 이미지 여부만 확인하므로 최소 PNG면 통과한다.
+  /// 백엔드는 매직 넘버로 이미지 여부만 확인하므로 최소 PNG면 통과한다.
+  ///
+  /// 실제 YOLO 추정기에서는 사람이 없어 `detected: false`가 나온다. 파이프라인이
+  /// 살아 있는지 확인하는 용도이지, 자세 판정을 얻는 용도가 아니다.
   static final List<int> placeholderFrame = base64Decode(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
   );

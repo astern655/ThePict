@@ -143,18 +143,23 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     });
   }
 
-  /// 세트 종료 시 자세 판정을 받아온다.
+  /// 세트 종료 시 자세 판정을 받아온다. **실제로 측정된 것만** 돌려준다.
   ///
-  /// 카메라가 아직 없어 자리표시자 프레임을 보내지만, 각도 계산과 기준 판정은
-  /// 백엔드 pose_eval이 실제로 수행한다 — 여기서 받은 checks는 진짜 산출물이다.
-  /// 이게 없으면 요약·캘린더의 문장 분석이 "관절 데이터가 없어 분석할 수 없다"만 반복한다.
-  /// 실패해도 세션 기록은 진행한다 (checks 없이 저장되고, 분석이 그 사실을 정직하게 알린다).
+  /// 예전에는 자리표시자 프레임(1x1 PNG)을 보내고 받은 checks를 그대로 저장했다.
+  /// 백엔드가 stub 추정기로 떠 있으면 그 좌표는 이미지와 무관한 더미이고, 그걸
+  /// 저장하면 요약·캘린더의 문장 분석이 지어낸 각도로 "엉덩이를 더 빼세요" 같은
+  /// 구체적인 교정 지시를 만들어 낸다. 사용자는 그게 자기 자세를 잰 결과라고 믿는다.
+  ///
+  /// 그래서 백엔드가 `measured: true`(실제 이미지에서 나온 좌표)라고 밝힌 경우에만
+  /// 채택한다. 아니면 null — 분석은 "관절 데이터가 없다"고 정직하게 말한다.
+  /// 실패해도 세션 기록은 진행한다.
   Future<List<dynamic>?> _fetchChecks() async {
     try {
       final res = await Api.instance.postPoseFrame(
         exerciseId: widget.exercise['id'].toString(),
         frameBytes: Api.placeholderFrame,
       );
+      if (res['measured'] != true) return null;
       final ev = res['evaluation'];
       if (ev is Map && ev['checks'] is List) return ev['checks'] as List;
     } catch (_) {
@@ -414,6 +419,15 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                       style: const TextStyle(
                           color: AppDark.foregroundMuted, fontSize: 14, height: 1.45)),
                 ],
+                // 지금 이 화면은 자세를 재지 않는다. 횟수는 타이머로 세고 점수는 임의값이다.
+                // 진짜 판정은 영상을 AI 엔진에 올리는 경로(POST /inference/video)에서만 나온다.
+                const SizedBox(height: 10),
+                const Text(
+                  '카메라 자세 측정은 아직 연결되지 않았어요. 횟수는 타이머로 세고 '
+                  '점수는 임시값이라, 자세 피드백은 나오지 않습니다.',
+                  style: TextStyle(
+                      color: AppDark.foregroundMuted, fontSize: 13, height: 1.45),
+                ),
               ],
             ),
           ),
@@ -496,9 +510,11 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                 child: const Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    // 카메라가 붙기 전까지 이 화면은 타이머로 횟수를 세는 목(mock)이다.
+                    // "측정 중"이라고 쓰면 사용자가 자기 자세를 재고 있다고 믿는다.
                     Icon(Icons.fiber_manual_record, size: 10, color: AppDark.error),
                     SizedBox(width: 6),
-                    Text('측정 중',
+                    Text('모의 측정',
                         style: TextStyle(
                             color: AppDark.foreground,
                             fontWeight: FontWeight.w700,
@@ -530,7 +546,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                         children: [
                           if (avg != null) Icon(formScoreIcon(avg), size: 14, color: scoreColor),
                           Text(
-                            avg != null ? _scoreLabel(avg) : '측정 준비 중',
+                            avg != null ? _scoreLabel(avg) : '자세 측정 없음',
                             textAlign: TextAlign.center,
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
