@@ -203,6 +203,105 @@ def test_stub_and_yolo_disagree_on_measured_flag():
     assert pose_estimator.YoloPoseEstimator.measures_real_image is True
 
 
+# ---- 점수 없음 vs 0점 ----------------------------------------------------
+# 자세를 재지 않은 세트는 점수가 없다. 0점으로 치면 측정하지 않은 사람의 추세가
+# 바닥으로 끌려가고, "지난 세션과 같은 0점"이라는 헛소리가 나간다.
+
+
+def test_unmeasured_sets_are_excluded_from_average():
+    token = register_and_login("noscore@test.com")
+    r = client.post(
+        "/sessions",
+        headers=auth_headers(token),
+        json={
+            "exercise_id": "squat",
+            "started_at": "2026-07-22T10:00:00",
+            "sets": [{"reps": 10}, {"reps": 10, "form_score": 80.0}],
+        },
+    )
+    assert r.status_code == 201
+    # 미측정 세트를 0점으로 넣었다면 40.0이 됐을 것이다.
+    assert r.json()["avg_form_score"] == 80.0
+
+
+def test_fully_unmeasured_session_reports_no_score():
+    token = register_and_login("noscore2@test.com")
+    session = client.post(
+        "/sessions",
+        headers=auth_headers(token),
+        json={
+            "exercise_id": "squat",
+            "started_at": "2026-07-22T11:00:00",
+            "sets": [{"reps": 10}, {"reps": 8}],
+        },
+    ).json()
+    # 자세를 하나도 안 쟀으면 세션 점수는 0이 아니라 None이다(/sessions와 /analysis 일치).
+    assert session["avg_form_score"] is None
+
+    a = client.get(f"/sessions/{session['id']}/analysis", headers=auth_headers(token)).json()
+    assert a["has_score"] is False
+    assert a["avg_form_score"] is None
+    # 점수 문장을 지어내지 않는다.
+    assert not any("점" in line and "평균 점수" in line for line in a["change"])
+
+
+def test_sessions_and_analysis_agree_on_missing_score():
+    """미측정 세션에서 /sessions와 /analysis가 같은 None을 내야 한다.
+
+    예전엔 /sessions는 0, /analysis는 None을 줘서 홈 화면이 0을 실점수로 집계했다.
+    """
+    token = register_and_login("agree@test.com")
+    session = client.post(
+        "/sessions",
+        headers=auth_headers(token),
+        json={
+            "exercise_id": "squat",
+            "started_at": "2026-07-22T09:00:00",
+            "sets": [{"reps": 10}],
+        },
+    ).json()
+    listed = client.get("/sessions", headers=auth_headers(token)).json()[0]
+    analysis_out = client.get(
+        f"/sessions/{session['id']}/analysis", headers=auth_headers(token)
+    ).json()
+    assert session["avg_form_score"] is None
+    assert listed["avg_form_score"] is None
+    assert analysis_out["avg_form_score"] is None
+
+
+def test_day_summary_says_no_score_when_nothing_measured():
+    token = register_and_login("noscore3@test.com")
+    client.post(
+        "/sessions",
+        headers=auth_headers(token),
+        json={
+            "exercise_id": "squat",
+            "started_at": "2026-07-22T12:00:00",
+            "sets": [{"reps": 12}],
+        },
+    )
+    day = client.get("/analysis", params={"date": "2026-07-22"}, headers=auth_headers(token)).json()
+    assert day["summary"] == ["1개 세션, 총 12회를 했어요. 자세를 측정한 기록이 없어 점수는 없습니다."]
+
+
+def test_measured_session_still_reports_its_score():
+    """미측정 처리가 정상 경로를 망가뜨리지 않았는지."""
+    token = register_and_login("scored@test.com")
+    session = client.post(
+        "/sessions",
+        headers=auth_headers(token),
+        json={
+            "exercise_id": "squat",
+            "started_at": "2026-07-22T13:00:00",
+            "sets": [{"reps": 10, "form_score": 90.0}],
+        },
+    ).json()
+    assert session["avg_form_score"] == 90.0
+    a = client.get(f"/sessions/{session['id']}/analysis", headers=auth_headers(token)).json()
+    assert a["has_score"] is True
+    assert a["avg_form_score"] == 90.0
+
+
 # ---- 엔드포인트 ----------------------------------------------------------
 
 

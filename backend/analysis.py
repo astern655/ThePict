@@ -74,6 +74,15 @@ def _fmt_range(lo, hi) -> str:
     return "목표 범위"
 
 
+def has_score(session: dict) -> bool:
+    """자세를 실제로 측정한 세트가 하나라도 있는가.
+
+    없으면 avg_form_score는 0인데, 그건 "0점"이 아니라 "점수 없음"이다.
+    이걸 구분하지 않으면 "지난 세션과 같은 0점이에요" 같은 헛소리가 나간다.
+    """
+    return any(s.get("form_score") is not None for s in session.get("sets") or [])
+
+
 def aggregate(sets: list[dict]) -> dict:
     """세트별 checks를 항목별로 집계. checks가 없는 세트는 그냥 빠진다."""
     agg = {}
@@ -117,8 +126,10 @@ def build(session: dict, previous: dict | None, exercise_name: str | None = None
         "session_id": session["id"],
         "exercise_id": exercise_id,
         "date": session["date"],
-        "avg_form_score": session["avg_form_score"],
+        "avg_form_score": session["avg_form_score"] if has_score(session) else None,
         "has_joint_data": bool(agg),
+        # False면 avg_form_score는 None이다. 점수 자리에 0을 그리면 안 된다.
+        "has_score": has_score(session),
         "compared_with": None,
         "good": [],
         "bad": [],
@@ -192,14 +203,24 @@ def _change(
     if previous is None:
         return [], [f"비교할 이전 {exercise_name} 세션이 없어요. 이번이 첫 기록입니다."]
 
-    score_delta = round(session["avg_form_score"] - previous["avg_form_score"], 1)
+    # 한쪽이라도 자세를 안 쟀으면 점수 비교 자체가 성립하지 않는다.
+    # (avg_form_score 0은 "0점"이 아니라 "점수 없음"이다)
+    comparable = has_score(session) and has_score(previous)
+    score_delta = (
+        round(session["avg_form_score"] - previous["avg_form_score"], 1) if comparable else 0
+    )
     prev_agg = aggregate(previous.get("sets") or [])
 
     if not agg or not prev_agg:
-        return [], [
-            f"이전 세션({previous['date']})에 관절 판정 데이터가 없어 원인까지는 비교할 수 없어요. "
-            f"평균 점수는 {previous['avg_form_score']}점 → {session['avg_form_score']}점입니다."
-        ]
+        note = f"이전 세션({previous['date']})에 관절 판정 데이터가 없어 원인까지는 비교할 수 없어요."
+        if comparable:
+            note += (
+                f" 평균 점수는 {previous['avg_form_score']}점 → "
+                f"{session['avg_form_score']}점입니다."
+            )
+        else:
+            note += " 자세를 측정한 기록이 없어 점수도 비교할 수 없습니다."
+        return [], [note]
 
     # 항목별로 "목표에서 얼마나 벗어났나"의 변화를 계산 — 개선분이 큰 순으로 정렬
     moves = []
@@ -230,7 +251,7 @@ def _change(
             sign = f"+{score_delta}" if score_delta > 0 else str(score_delta)
             lines.append(f"점수 {cause}({sign}점)의 주 원인은 {label} 변화입니다.")
 
-    if score_delta == 0 and not any("주 원인" in ln for ln in lines):
+    if comparable and score_delta == 0 and not any("주 원인" in ln for ln in lines):
         lines.append(f"평균 점수는 {session['avg_form_score']}점으로 지난 세션과 같아요.")
     return lines, []
 
@@ -240,5 +261,10 @@ def day_summary(sessions: list[dict]) -> list:
     if not sessions:
         return ["이 날에는 기록된 운동이 없어요."]
     total_reps = sum(s["total_reps"] for s in sessions)
-    avg = round(sum(s["avg_form_score"] for s in sessions) / len(sessions), 1)
-    return [f"{len(sessions)}개 세션, 총 {total_reps}회를 했어요. 평균 자세 점수는 {avg}점입니다."]
+    head = f"{len(sessions)}개 세션, 총 {total_reps}회를 했어요."
+    # 자세를 잰 세션만 평균에 넣는다. 하나도 없으면 점수를 지어내지 않고 그렇다고 말한다.
+    scored = [s for s in sessions if has_score(s)]
+    if not scored:
+        return [f"{head} 자세를 측정한 기록이 없어 점수는 없습니다."]
+    avg = round(sum(s["avg_form_score"] for s in scored) / len(scored), 1)
+    return [f"{head} 평균 자세 점수는 {avg}점입니다."]

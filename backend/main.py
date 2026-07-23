@@ -133,7 +133,10 @@ class CheckIn(BaseModel):
 
 class SetIn(BaseModel):
     reps: int
-    form_score: float
+    # 자세를 실제로 측정한 세트만 점수를 갖는다. 카메라/영상 없이 횟수만 센 세트는
+    # None으로 올라오고, 평균과 추세 계산에서 통째로 빠진다. 필수로 두면 클라이언트가
+    # 0이나 임의값을 지어내 넣게 되고, 그 숫자가 그대로 "지난번보다 좋아졌어요"가 된다.
+    form_score: Optional[float] = None
     # 없으면 없는 대로 저장된다 — 기존 세션/카메라 없이 한 세션과 동일하게 동작
     checks: Optional[list[CheckIn]] = None
 
@@ -239,15 +242,29 @@ def list_exercises():
     return [{k: v for k, v in e.items()} for e in EXERCISES]
 
 
+def _avg_form_score(sets: list[dict]) -> Optional[float]:
+    """측정된 세트만 평균 낸다. 하나도 측정 안 됐으면 None.
+
+    미측정 세트를 0점으로 치면 자세를 재지도 않은 사람의 점수가 바닥으로 끌려가고,
+    100점으로 치면 반대가 된다. 둘 다 거짓이라 아예 분모에서 뺀다. 측정된 세트가
+    하나도 없으면 "0점"이 아니라 "점수 없음"이므로 None을 돌려준다.
+    """
+    scored = [s["form_score"] for s in sets if s.get("form_score") is not None]
+    return sum(scored) / len(scored) if scored else None
+
+
 def _row_session(row: sqlite3.Row) -> dict:
+    # avg_form_score는 저장값(NOT NULL이라 미측정 세션은 0)이 아니라 sets에서 다시
+    # 계산한다. 그래야 /sessions와 /analysis가 미측정 세션에 대해 똑같이 None을 낸다.
+    sets = json.loads(row["sets_json"])
     return {
         "id": row["id"],
         "exercise_id": row["exercise_id"],
         "date": row["date"],
         "started_at": row["started_at"],
-        "sets": json.loads(row["sets_json"]),
+        "sets": sets,
         "total_reps": row["total_reps"],
-        "avg_form_score": row["avg_form_score"],
+        "avg_form_score": _avg_form_score(sets),
     }
 
 
@@ -259,7 +276,7 @@ def create_session(
 ):
     sets = [s.model_dump(exclude_none=True) for s in body.sets]
     total_reps = sum(s["reps"] for s in sets)
-    avg_form_score = sum(s["form_score"] for s in sets) / len(sets) if sets else 0
+    avg_form_score = _avg_form_score(sets)
     sid = str(uuid.uuid4())
     conn.execute(
         "INSERT INTO sessions (id, email, exercise_id, date, started_at, sets_json, total_reps, avg_form_score) "
@@ -272,7 +289,9 @@ def create_session(
             body.started_at,
             json.dumps(sets),
             total_reps,
-            avg_form_score,
+            # 컬럼이 NOT NULL이라 미측정(None)은 0으로 저장한다. 읽을 때는
+            # _row_session이 sets에서 다시 계산해 None으로 되돌린다.
+            avg_form_score if avg_form_score is not None else 0,
         ),
     )
     conn.commit()
@@ -321,9 +340,7 @@ def get_calendar(
 def _day_summary(day_sessions: list[dict]) -> dict:
     total_reps = sum(s["total_reps"] for s in day_sessions)
     all_sets = [st for s in day_sessions for st in s["sets"]]
-    avg_form_score = (
-        sum(st["form_score"] for st in all_sets) / len(all_sets) if all_sets else 0
-    )
+    avg_form_score = _avg_form_score(all_sets)
     return {
         "total_reps": total_reps,
         "avg_form_score": avg_form_score,
@@ -360,9 +377,13 @@ def compare(
 
     delta = None
     if today is not None and previous is not None:
+        # 한쪽이라도 자세를 안 쟀으면(avg None) 점수 차이는 성립하지 않는다.
+        both_scored = today["avg_form_score"] is not None and previous["avg_form_score"] is not None
         delta = {
             "total_reps": today["total_reps"] - previous["total_reps"],
-            "avg_form_score": today["avg_form_score"] - previous["avg_form_score"],
+            "avg_form_score": (
+                today["avg_form_score"] - previous["avg_form_score"] if both_scored else None
+            ),
         }
 
     return {"today": today, "previous": previous, "delta": delta}

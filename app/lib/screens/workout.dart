@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import '../api.dart';
 import '../main.dart';
 import '../widgets/common.dart';
@@ -9,8 +10,14 @@ import 'summary.dart';
 
 /// 운동 세션 진행 화면.
 ///
-/// AI 없음 — 카메라는 자리 표시자, 렙 카운트는 타이머로 자동 증가하는 목(mock) 데이터.
-/// 다만 목 타이머도 `GET /me/plan`이 내려준 **목표 횟수**에 도달하면 멈추고 휴식으로 넘어간다.
+/// 자세 측정 경로는 하나뿐이다: **영상을 골라 `/inference/video`에 올리는 것**.
+/// 그때만 AI 엔진(YOLO)이 실제로 반복을 세고 회차별 자세를 판정하며, 그 결과가
+/// 세트의 reps/form_score/checks가 된다.
+///
+/// 실시간 카메라는 아직 없다. 화면의 타이머 카운트는 목(mock)이고 — 흐름을 시연하기
+/// 위한 것 — **점수를 만들지 않는다.** 예전에는 여기서 60~100 사이 난수를 점수로
+/// 넣었는데, 그 숫자가 추세 그래프와 "지난번보다 좋아졌어요" 문장의 근거가 됐다.
+/// 재지 않았으면 점수는 없다(form_score: null).
 ///
 /// 상태 기계: loading → ready → exercising ⇄ resting → (마지막 세트) → 저장 → 요약
 enum _Phase { loading, ready, exercising, resting }
@@ -36,7 +43,6 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     'advanced': '상급',
   };
 
-  final _random = Random();
   final DateTime _startedAt = DateTime.now();
   final List<Map<String, dynamic>> _completedSets = [];
 
@@ -55,11 +61,14 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
   Timer? _repTimer;
   Timer? _restTimer;
   int _reps = 0;
-  final List<int> _formScores = [];
   int _restRemaining = 0;
   int _restTotal = 0;
 
   bool _posting = false;
+  bool _analyzing = false; // 영상 업로드/분석 진행 중
+
+  /// 영상 분석으로 기록한 세트 수. 0이면 이 세션에는 실측 자세 데이터가 없다.
+  int _measuredSets = 0;
 
   @override
   void initState() {
@@ -127,55 +136,111 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
       _phase = _Phase.exercising;
       _setNo += 1;
       _reps = 0;
-      _formScores.clear();
     });
     _restTimer?.cancel();
     _repTimer?.cancel();
-    // 목 데이터: 3초에 1회. 실제 카메라/YOLO가 붙으면 이 타이머만 걷어내면 된다.
+    // 목 데이터: 3초에 1회. 흐름 시연용이며 점수는 만들지 않는다.
+    // 실제 카메라 스트림이 붙으면 이 타이머만 걷어내면 된다.
     _repTimer = Timer.periodic(const Duration(seconds: 3), (_) {
       if (!mounted) return;
-      setState(() {
-        _reps++;
-        _formScores.add(60 + _random.nextInt(41)); // 60~100
-      });
+      setState(() => _reps++);
       HapticFeedback.lightImpact();
       if (_reps >= _targetReps) _completeSet();
     });
   }
 
-  /// 세트 종료 시 자세 판정을 받아온다. **실제로 측정된 것만** 돌려준다.
+  // ---- 영상으로 자세 측정 (유일한 실측 경로) ----
+
+  /// 운동 영상을 골라 AI 엔진에 올리고, 분석 결과를 세트 하나로 기록한다.
   ///
-  /// 예전에는 자리표시자 프레임(1x1 PNG)을 보내고 받은 checks를 그대로 저장했다.
-  /// 백엔드가 stub 추정기로 떠 있으면 그 좌표는 이미지와 무관한 더미이고, 그걸
-  /// 저장하면 요약·캘린더의 문장 분석이 지어낸 각도로 "엉덩이를 더 빼세요" 같은
-  /// 구체적인 교정 지시를 만들어 낸다. 사용자는 그게 자기 자세를 잰 결과라고 믿는다.
-  ///
-  /// 그래서 백엔드가 `measured: true`(실제 이미지에서 나온 좌표)라고 밝힌 경우에만
-  /// 채택한다. 아니면 null — 분석은 "관절 데이터가 없다"고 정직하게 말한다.
-  /// 실패해도 세션 기록은 진행한다.
-  Future<List<dynamic>?> _fetchChecks() async {
+  /// 반환된 `set`은 AI가 실제로 센 반복 횟수와 회차별 판정에서 나온 점수다 —
+  /// 화면의 목 타이머와 무관하며, 이것만이 요약/추세의 근거가 된다.
+  Future<void> _analyzeVideo() async {
+    final XFile? picked;
     try {
-      final res = await Api.instance.postPoseFrame(
+      picked = await ImagePicker().pickVideo(source: ImageSource.gallery);
+    } catch (e) {
+      if (mounted) _toast('영상을 불러오지 못했어요: $e');
+      return;
+    }
+    if (picked == null) return; // 사용자가 취소
+
+    setState(() => _analyzing = true);
+    try {
+      final bytes = await picked.readAsBytes();
+      final res = await Api.instance.postWorkoutVideo(
         exerciseId: widget.exercise['id'].toString(),
-        frameBytes: Api.placeholderFrame,
+        videoBytes: bytes,
+        filename: picked.name,
       );
-      if (res['measured'] != true) return null;
-      final ev = res['evaluation'];
-      if (ev is Map && ev['checks'] is List) return ev['checks'] as List;
-    } catch (_) {
-      // 무시 — 자세 판정 실패가 운동 기록을 막으면 안 된다.
+      if (!mounted) return;
+
+      final set = Map<String, dynamic>.from(res['set'] as Map);
+      final report = res['report'] as Map<String, dynamic>?;
+
+      if (_asInt(set['reps'], 0) == 0) {
+        // 반복을 하나도 못 셌다 — 기록하면 0회 세트가 남는다. 이유를 그대로 보여준다.
+        _toast(_reportProblem(report) ??
+            '영상에서 반복 동작을 찾지 못했어요. 측면에서 전신이 나오게 다시 촬영해 주세요.');
+        return;
+      }
+
+      setState(() {
+        _completedSets.add(set);
+        _measuredSets += 1;
+        if (_setNo == 0) _setNo = 1; // 영상만으로 시작한 경우
+      });
+      HapticFeedback.mediumImpact();
+      _showReport(report, set);
+    } catch (e) {
+      if (mounted) _toast('$e');
+    } finally {
+      if (mounted) setState(() => _analyzing = false);
+    }
+  }
+
+  /// 리포트의 영상 수준 경고(측면 아님, 검출률 낮음 등) 중 첫 문장.
+  static String? _reportProblem(Map<String, dynamic>? report) {
+    final issues = report?['video_issues'];
+    if (issues is List && issues.isNotEmpty) {
+      final first = issues.first;
+      if (first is Map && first['message'] is String) return first['message'] as String;
     }
     return null;
   }
 
+  void _toast(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  /// AI 리포트 요약을 그대로 보여준다. 문장은 엔진이 만든 것을 손대지 않는다.
+  void _showReport(Map<String, dynamic>? report, Map<String, dynamic> set) {
+    final summary = (report?['summary'] as List?)?.cast<String>() ?? const <String>[];
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('${_asInt(set['reps'], 0)}회 측정 완료'),
+        content: SingleChildScrollView(
+          child: Text(
+            summary.isEmpty ? '분석 결과를 받지 못했어요.' : summary.join('\n'),
+            style: const TextStyle(fontSize: 14, height: 1.5),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('확인')),
+        ],
+      ),
+    );
+  }
+
   /// 현재 세트를 기록에 넣는다. 목표 도달(자동)과 "세트 완료"(수동) 둘 다 여기로 온다.
+  ///
+  /// 타이머로만 센 세트에는 form_score를 넣지 않는다(백엔드가 null을 받아 평균에서
+  /// 제외한다). 자세를 재지 않았으므로 점수가 없는 게 맞다.
   Future<void> _completeSet() async {
     _repTimer?.cancel();
     if (_reps > 0) {
-      final set = <String, dynamic>{'reps': _reps, 'form_score': _avgFormScore ?? 0};
-      final checks = await _fetchChecks();
-      if (checks != null && checks.isNotEmpty) set['checks'] = checks;
-      _completedSets.add(set);
+      _completedSets.add(<String, dynamic>{'reps': _reps});
       HapticFeedback.mediumImpact();
     }
     if (_setNo >= _targetSets) {
@@ -191,7 +256,6 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
       _restTotal = _restSec;
       _restRemaining = _restSec;
       _reps = 0;
-      _formScores.clear();
     });
     if (_restSec <= 0) {
       _startSet();
@@ -220,14 +284,10 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
   Future<void> _endWorkout() async {
     _repTimer?.cancel();
     _restTimer?.cancel();
-    // 진행 중이던 세트가 남아 있으면 버리지 않고 기록에 넣는다.
+    // 진행 중이던 세트가 남아 있으면 버리지 않고 기록에 넣는다(점수는 없음 — 미측정).
     if (_reps > 0) {
-      final set = <String, dynamic>{'reps': _reps, 'form_score': _avgFormScore ?? 0};
-      final checks = await _fetchChecks();
-      if (checks != null && checks.isNotEmpty) set['checks'] = checks;
-      _completedSets.add(set);
+      _completedSets.add(<String, dynamic>{'reps': _reps});
       _reps = 0;
-      _formScores.clear();
     }
     if (_completedSets.isEmpty) {
       if (mounted) Navigator.of(context).pop();
@@ -238,8 +298,9 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
       final session = await Api.instance.postSession(
         exerciseId: widget.exercise['id'].toString(),
         startedAt: _startedAt,
-        // 세트마다 _fetchChecks()로 받은 관절 판정이 들어 있다.
-        // 판정을 못 받은 세트는 checks 없이 저장되고, 분석이 그 사실을 정직하게 알린다.
+        // 영상 분석으로 만든 세트에는 AI가 낸 form_score와 checks가 들어 있고,
+        // 타이머로만 센 세트에는 reps만 있다. 후자는 백엔드가 점수 평균에서 빼고,
+        // 분석이 "자세를 측정한 기록이 없다"고 정직하게 알린다.
         sets: _completedSets,
       );
       if (!mounted) return;
@@ -256,9 +317,15 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
 
   // ---- 파생값 ----
 
+  /// 지금까지 **실측된** 세트들의 평균 점수. 영상 분석 세트가 없으면 null.
+  /// null은 "0점"이 아니라 "잰 적 없음"이다 — UI도 그렇게 표시해야 한다.
   int? get _avgFormScore {
-    if (_formScores.isEmpty) return null;
-    return (_formScores.reduce((a, b) => a + b) / _formScores.length).round();
+    final scores = _completedSets
+        .map((s) => s['form_score'])
+        .whereType<num>()
+        .toList();
+    if (scores.isEmpty) return null;
+    return (scores.reduce((a, b) => a + b) / scores.length).round();
   }
 
   String _scoreLabel(int score) {
@@ -419,15 +486,42 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                       style: const TextStyle(
                           color: AppDark.foregroundMuted, fontSize: 14, height: 1.45)),
                 ],
-                // 지금 이 화면은 자세를 재지 않는다. 횟수는 타이머로 세고 점수는 임의값이다.
-                // 진짜 판정은 영상을 AI 엔진에 올리는 경로(POST /inference/video)에서만 나온다.
+                // 자세를 실제로 재는 유일한 경로. 실시간 카메라가 없으므로
+                // 영상을 올려야 AI 엔진(YOLO)이 반복과 자세를 판정한다.
                 const SizedBox(height: 10),
                 const Text(
-                  '카메라 자세 측정은 아직 연결되지 않았어요. 횟수는 타이머로 세고 '
-                  '점수는 임시값이라, 자세 피드백은 나오지 않습니다.',
+                  '실시간 카메라는 아직 연결되지 않았어요. 아래 버튼으로 운동 영상을 올리면 '
+                  'AI가 반복 횟수와 회차별 자세를 실제로 판정합니다. 스쿼트는 옆에서 찍어 주세요.',
                   style: TextStyle(
                       color: AppDark.foregroundMuted, fontSize: 13, height: 1.45),
                 ),
+                const SizedBox(height: 12),
+                PressScale(
+                  child: OutlinedButton.icon(
+                    onPressed: _analyzing || _posting ? null : _analyzeVideo,
+                    icon: _analyzing
+                        ? const SizedBox(
+                            height: 18,
+                            width: 18,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: AppDark.primary))
+                        : const Icon(Icons.video_library_outlined, size: 18),
+                    label: Text(
+                      _analyzing ? '분석 중… 영상 길이만큼 걸려요' : '영상으로 자세 측정',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    style: OutlinedButton.styleFrom(minimumSize: const Size(0, 48)),
+                  ),
+                ),
+                if (_measuredSets > 0) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'AI가 판정한 세트 $_measuredSets개가 기록에 들어 있어요.',
+                    style: const TextStyle(
+                        color: AppDark.primary, fontSize: 13, fontWeight: FontWeight.w700),
+                  ),
+                ],
               ],
             ),
           ),
@@ -779,14 +873,19 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
         separatorBuilder: (_, __) => const SizedBox(width: 8),
         itemBuilder: (context, i) {
           final s = _completedSets[i];
-          final score = _asInt(s['form_score'], 0);
-          final color = formScoreColor(score, dark: true);
+          // 영상으로 잰 세트만 점수가 있다. 없으면 0점이 아니라 '측정 안 함'이다.
+          final rawScore = s['form_score'];
+          final score = rawScore is num ? rawScore.round() : null;
+          final color =
+              score != null ? formScoreColor(score, dark: true) : AppDark.foregroundMuted;
           return BlockCard(
             style: AppBlocks.tintNavy,
             outlined: true,
             radius: 14,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            semanticLabel: '${i + 1}세트 ${s['reps']}회, 폼 점수 $score점',
+            semanticLabel: score != null
+                ? '${i + 1}세트 ${s['reps']}회, 폼 점수 $score점'
+                : '${i + 1}세트 ${s['reps']}회, 자세 측정 안 함',
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -804,9 +903,10 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(formScoreIcon(score), size: 12, color: color),
+                    Icon(score != null ? formScoreIcon(score) : Icons.remove_rounded,
+                        size: 12, color: color),
                     const SizedBox(width: 3),
-                    Text('$score점',
+                    Text(score != null ? '$score점' : '측정 안 함',
                         style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w700)),
                   ],
                 ),
@@ -832,12 +932,32 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
               backgroundColor: AppDark.primary,
               foregroundColor: AppDark.onPrimary,
             ),
-            onPressed: _posting ? null : _startSet,
+            onPressed: _posting || _analyzing ? null : _startSet,
             icon: const Icon(Icons.play_arrow_rounded),
-            label: const Text('1세트 시작'),
+            label: const Text('1세트 시작', maxLines: 1, overflow: TextOverflow.ellipsis),
           ),
         ),
       ));
+      // 영상만 올리고 끝내는 흐름 — 타이머 세트를 한 번도 시작하지 않아도
+      // 기록을 저장할 수 있어야 한다. 없으면 분석 결과가 그대로 버려진다.
+      if (_completedSets.isNotEmpty) {
+        children.addAll([
+          const SizedBox(width: 12),
+          Expanded(
+            child: PressScale(
+              child: FilledButton(
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(0, 52),
+                  backgroundColor: AppDark.dangerFill,
+                  foregroundColor: AppDark.foreground,
+                ),
+                onPressed: _posting || _analyzing ? null : _endWorkout,
+                child: const Text('운동 종료', maxLines: 1, overflow: TextOverflow.ellipsis),
+              ),
+            ),
+          ),
+        ]);
+      }
     } else {
       if (_phase == _Phase.exercising) {
         children.addAll([

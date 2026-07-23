@@ -470,7 +470,7 @@ class _SummaryScreenState extends State<SummaryScreen> {
     final labels = [for (var i = 1; i <= reps.length; i++) '$i'];
     final summary = [
       for (var i = 0; i < sets.length; i++)
-        '${i + 1}세트 ${_fmt(reps[i])}회 폼 ${((sets[i]['form_score'] as num?) ?? 0).round()}점'
+        '${i + 1}세트 ${_fmt(reps[i])}회 ${_setScoreText(sets[i])}'
     ].join(', ');
 
     return BlockCard(
@@ -498,7 +498,7 @@ class _SummaryScreenState extends State<SummaryScreen> {
             runSpacing: 8,
             children: [
               for (var i = 0; i < sets.length; i++)
-                _scoreChip(i, (sets[i]['form_score'] as num?) ?? 0),
+                _scoreChip(i, sets[i]['form_score'] as num?),
             ],
           ),
         ],
@@ -506,12 +506,23 @@ class _SummaryScreenState extends State<SummaryScreen> {
     );
   }
 
+  /// 세트 하나의 점수 표기. 자세를 재지 않은 세트는 점수가 없다(0점이 아니다).
+  static String _setScoreText(Map<String, dynamic> set) {
+    final score = set['form_score'] as num?;
+    return score == null ? '자세 측정 안 함' : '폼 ${score.round()}점';
+  }
+
   /// 네이비 색면 = AppDark.scaffold와 동일 → formScoreColor(dark: true)가 검증된 조합 그대로 유효.
   /// 색 단독 전달 방지를 위해 아이콘(형태)과 숫자를 항상 병기한다.
-  Widget _scoreChip(int index, num score) {
-    final c = formScoreColor(score, dark: true);
+  ///
+  /// [score]가 null이면 그 세트는 영상 분석을 거치지 않아 점수가 없다. 0으로 그리면
+  /// "자세가 엉망이었다"는 뜻이 되어버리므로 중립 색과 '—'로 구분해 표시한다.
+  Widget _scoreChip(int index, num? score) {
+    final c = score != null ? formScoreColor(score, dark: true) : AppBlocks.navy.mutedOr;
     return Semantics(
-      label: '${index + 1}세트 폼 점수 ${score.round()}점',
+      label: score != null
+          ? '${index + 1}세트 폼 점수 ${score.round()}점'
+          : '${index + 1}세트 자세 측정 안 함',
       child: ExcludeSemantics(
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
@@ -524,12 +535,12 @@ class _SummaryScreenState extends State<SummaryScreen> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(formScoreIcon(score), size: 14, color: c),
+              Icon(score != null ? formScoreIcon(score) : Icons.remove_rounded, size: 14, color: c),
               const SizedBox(width: 5),
               Text('${index + 1}세트',
                   style: TextStyle(fontSize: 12, color: AppBlocks.navy.mutedOr)),
               const SizedBox(width: 6),
-              Text('${score.round()}',
+              Text(score != null ? '${score.round()}' : '—',
                   style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w800,

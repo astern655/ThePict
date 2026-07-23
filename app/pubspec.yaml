@@ -10,6 +10,10 @@ dependencies:
   flutter:
     sdk: flutter
   http: ^1.2.0
+  # 운동 영상을 골라 /inference/video(AI 엔진)로 올리기 위한 것.
+  # 웹은 image_picker_for_web이 자동으로 물리고, 모바일은 플랫폼 폴더가 필요하다
+  # (`flutter create .` 로 생성).
+  image_picker: ^1.1.2
 
 dev_dependencies:
   flutter_test:
