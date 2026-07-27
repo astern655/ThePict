@@ -67,7 +67,7 @@ def test_rep_record_timestamps() -> None:
     assert record.start_frame < record.bottom_frame < record.end_frame
     assert record.start_sec is not None and record.end_sec is not None
     assert record.duration_sec is not None and record.duration_sec > 0
-    assert record.bottom_angle is not None and record.bottom_angle <= 100.0
+    assert record.bottom_angle is not None and record.bottom_angle <= 90.0
     # to_dict/rep_verdicts에도 시각이 실린다 (UI 시킹용)
     verdicts = report.rep_verdicts()
     assert verdicts[0]["bottom_sec"] == record.bottom_sec

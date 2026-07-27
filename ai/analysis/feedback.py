@@ -63,7 +63,7 @@ class Issue:
     message: str            # 사용자에게 보여줄 한국어 문장
     measured: float | None = None  # 측정값 (디버깅/표시용)
     # 이 항목을 발생시킨 기준선. measured와 같은 지표·같은 단위여야 한다.
-    # (예: torso_lean이면 상체−정강이 차의 WARNING 임계값 25.0)
+    # (예: torso_lean이면 상체−정강이 차의 WARNING 임계값 30.0)
     # 임계값이 나중에 바뀌어도 저장된 리포트를 그대로 해석할 수 있게 함께 남긴다.
     # 넘는 쪽이 결함인지 모자란 쪽이 결함인지는 코드마다 다르다. rep 결함(깊이·상체)은
     # 전부 '초과가 결함'이고, 영상 수준의 low_detection만 '미만이 결함'이다.
@@ -126,6 +126,10 @@ class Report:
     partial_rep_count: int = 0  # 깊이가 모자라 rep로 인정 못 한 움직임 수
     frames_processed: int = 0
     frames_with_person: int = 0
+    frames_skipped: int = 0        # 디코딩 실패로 건너뛴 프레임
+    frames_detect_failed: int = 0  # 관절 추론이 예외로 실패한 프레임
+    tracking_gap_count: int = 0    # 추적이 끊긴 구간 수
+    dropped_rep_count: int = 0     # 추적 끊김으로 폐기한 진행 중 rep 수
     annotated_video_path: str | None = None
     camera_view: str = "side"  # 스쿼트는 측면 촬영만 받는다(항상 "side")
 
@@ -239,6 +243,10 @@ class Report:
             "camera_view": self.camera_view,
             "frames_processed": self.frames_processed,
             "frames_with_person": self.frames_with_person,
+            "frames_skipped": self.frames_skipped,
+            "frames_detect_failed": self.frames_detect_failed,
+            "tracking_gap_count": self.tracking_gap_count,
+            "dropped_rep_count": self.dropped_rep_count,
             "annotated_video_path": self.annotated_video_path,
             "issues": [i.to_dict() for i in self.issues],
             "video_issues": [i.to_dict() for i in self.video_issues],

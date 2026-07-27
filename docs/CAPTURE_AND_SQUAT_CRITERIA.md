@@ -111,13 +111,16 @@
 
 | 코드 | 조건 | 심각도 |
 |---|---|---|
-| `good_depth` | 최저 무릎각 ≤ `SQUAT_GOOD_DEPTH_ANGLE`(**100°**) | GOOD |
-| `shallow_depth` | 100° 초과 ~ `SQUAT_SEVERE_DEPTH_ANGLE`(**120°**) 이하 | WARNING |
-| `very_shallow_depth` | 120° 초과 | ERROR |
+| `good_depth` | 최저 무릎각 ≤ `SQUAT_GOOD_DEPTH_ANGLE`(**90°**) | GOOD |
+| `shallow_depth` | 90° 초과 ~ `SQUAT_SEVERE_DEPTH_ANGLE`(**110°**) 이하 | WARNING |
+| `very_shallow_depth` | 110° 초과 | ERROR |
 
-- 근거: 허벅지가 바닥과 수평(무릎 약 90°)에 가까울수록 좋은 깊이. 100°를 기준선으로 둔다.
-  120°를 넘으면 무릎을 거의 굽히지 않은 것이라 스쿼트로 보기 어려워 ERROR로 올린다.
-- 경계값은 **아래 단계에 속한다**(초과일 때만 다음 단계). 즉 정확히 120°는 `shallow_depth`.
+- 근거: 허벅지가 바닥과 수평(무릎 약 90°)에 가까울수록 좋은 깊이다. LLM-FMS
+  270장과 로컬 정상 14 rep를 함께 비교해, 외부 정답 특이도 90% 이상을 유지하고
+  로컬 정상 최대값(85°)에 5° 여유를 두는 보수적 90°를 기준선으로 택했다.
+  심각도 정답 라벨은 없으므로 별도 최적화하지 않고, 기존 GOOD→ERROR 간격 20°를
+  유지해 110°를 ERROR 경계로 파생했다.
+- 경계값은 **아래 단계에 속한다**(초과일 때만 다음 단계). 즉 정확히 110°는 `shallow_depth`.
 - 단계마다 **다른 안내 문구**를 낸다("조금 더 앉으세요" vs "거의 앉지 않았습니다").
 - **주의**: 깊이는 각도와 무관하게 항상 판정되지만, **정면 영상의 깊이 값은 부정확**하다(§2).
   정면 세트에서는 깊이를 참고용으로만 볼 것.
@@ -131,9 +134,9 @@
 
 | 코드 | 조건 | 심각도 |
 |---|---|---|
-| (없음) | 차이 ≤ `SQUAT_TORSO_SHIN_DIFF_WARN`(**25°**) 이고 절대 기울기 ≤ 70° | — |
-| `torso_lean` | 차이 25° 초과 ~ `SQUAT_TORSO_SHIN_DIFF_SEVERE`(**35°**) 이하 | WARNING |
-| `excessive_torso_lean` | 차이 35° 초과, **또는** 절대 기울기 > `SQUAT_TORSO_LEAN_HARD_MAX`(**70°**) | ERROR |
+| (없음) | 차이 ≤ `SQUAT_TORSO_SHIN_DIFF_WARN`(**30°**) 이고 절대 기울기 ≤ 70° | — |
+| `torso_lean` | 차이 30° 초과 ~ `SQUAT_TORSO_SHIN_DIFF_SEVERE`(**40°**) 이하 | WARNING |
+| `excessive_torso_lean` | 차이 40° 초과, **또는** 절대 기울기 > `SQUAT_TORSO_LEAN_HARD_MAX`(**70°**) | ERROR |
 
 - 측정: 상체 = `torso_incline(어깨, 엉덩이)`, 정강이 = 같은 계산을 (무릎, 발목)에 적용.
   각각 좌우 중 보이는 쪽을 쓰고, 둘 다 보이면 평균. 무릎각 계산과 같은 관절만 쓰므로

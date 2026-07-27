@@ -16,13 +16,13 @@
 
 | 코드 | 조건 | 심각도 | rep 판정 |
 |---|---|---|---|
-| `good_depth` | 최저 무릎각 ≤ 100° | GOOD | (판정 안 낮춤) |
-| `shallow_depth` | 최저 무릎각 100° 초과 ~ 120° | WARNING | `needs_work` |
-| `very_shallow_depth` | 최저 무릎각 > 120° | **ERROR** | `incorrect` |
-| `torso_lean` | (상체 − 정강이) 기울기 차 25° 초과 ~ 35° | WARNING | `needs_work` |
-| `excessive_torso_lean` | 차 > 35° **또는** 상체 절대 기울기 > 70° | **ERROR** | `incorrect` |
+| `good_depth` | 최저 무릎각 ≤ 90° | GOOD | (판정 안 낮춤) |
+| `shallow_depth` | 최저 무릎각 90° 초과 ~ 110° | WARNING | `needs_work` |
+| `very_shallow_depth` | 최저 무릎각 > 110° | **ERROR** | `incorrect` |
+| `torso_lean` | (상체 − 정강이) 기울기 차 30° 초과 ~ 40° | WARNING | `needs_work` |
+| `excessive_torso_lean` | 차 > 40° **또는** 상체 절대 기울기 > 70° | **ERROR** | `incorrect` |
 
-경계값은 **아래 단계에 속한다**(초과일 때만 승급). 정확히 120°면 `shallow_depth`.
+경계값은 **아래 단계에 속한다**(초과일 때만 승급). 정확히 110°면 `shallow_depth`.
 
 rep 판정은 그 rep의 가장 심각한 코드에서 파생된다:
 ERROR 있음 → `incorrect` / ERROR 없고 WARNING 있음 → `needs_work` / 둘 다 없음 → `correct`.
@@ -34,8 +34,8 @@ ERROR 있음 → `incorrect` / ERROR 없고 WARNING 있음 → `needs_work` / �
 
 ## 2. 파라미터 근거 등급
 
-**모든 파라미터는 실제 영상으로 검증된 적이 없다.** 아래 등급은 "근거 문서가 있는가"의 차이일 뿐,
-A 등급도 실측 검증은 안 됐다.
+깊이 WARNING 경계는 LLM-FMS 핵심 프레임 270장과 로컬 정상 영상 14 rep로
+교차 확인했다. 나머지 파라미터는 대응되는 외부 정답 라벨이 없어 아직 미검증이다.
 
 - **A** — 물리적/기하학적 근거가 문서화됨. 우선순위 낮음.
 - **B** — 관례적 기본값. 실패해도 영향이 국소적.
@@ -45,10 +45,10 @@ A 등급도 실측 검증은 안 됐다.
 
 | 파라미터 | 값 | 등급 | 비고 |
 |---|---|---|---|
-| `SQUAT_GOOD_DEPTH_ANGLE` | 100.0 | A | 허벅지 수평 ≈ 무릎 90°. 100°를 기준선으로 둠 |
-| `SQUAT_SEVERE_DEPTH_ANGLE` | 120.0 | **C** | ERROR 승급선. 근거 없음 |
-| `SQUAT_TORSO_SHIN_DIFF_WARN` | 25.0 | **B** | 실영상 5개(rep 14개) 측정 분포의 빈 구간(11.5~22.6°)에 맞춰 20.0에서 상향 |
-| `SQUAT_TORSO_SHIN_DIFF_SEVERE` | 35.0 | **C** | 굿모닝 판정선. 근거 없음 |
+| `SQUAT_GOOD_DEPTH_ANGLE` | 90.0 | **검증 B** | LLM-FMS 특이도 91.1%, 로컬 정상 14 rep 오탐 0. 데이터셋 단독 최적값 대신 5° 격자·오탐 제약으로 선택 |
+| `SQUAT_SEVERE_DEPTH_ANGLE` | 110.0 | 파생 | 심각도 라벨 부재. 검증된 GOOD 경계에서 기존 20° 구간 폭을 유지 |
+| `SQUAT_TORSO_SHIN_DIFF_WARN` | 30.0 | 검증 B | 로컬 correct 14 rep 최대 28.7°. 25°에서 발생한 오탐 5건을 제거하는 최소 5° 격자값 |
+| `SQUAT_TORSO_SHIN_DIFF_SEVERE` | 40.0 | 파생 | 심각도 라벨 부재. 기존 WARNING→ERROR 구간 폭 10° 유지 |
 | `SQUAT_TORSO_LEAN_HARD_MAX` | 70.0 | **C** | 절대 상한 안전장치. 근거 없음 |
 
 ### 2.2 반복 카운트 (`ai/config.py`)
@@ -88,7 +88,8 @@ RepRecord: bottom_angle=80.0, start_sec=0.1, bottom_sec=0.27, end_sec=0.5, ...
 ```
 
 즉 **올바른 스쿼트에서 상체−정강이 차가 실제로 몇 도인지 알 방법이 현재 없다.**
-`SQUAT_TORSO_SHIN_DIFF_WARN`(25°)이 정상 스쿼트를 걸러내고 있는지조차 측정할 수 없다.
+LLM-FMS의 비평행 라벨은 현재의 단방향 전방 숙임과 정의가 달라
+`SQUAT_TORSO_SHIN_DIFF_WARN`을 직접 학습시키는 정답으로 쓸 수 없다.
 
 ### 권장 수정
 
@@ -137,8 +138,8 @@ bottom_shin_incline: float | None = None    # 최저점 정강이 기울기(도)
 `--frame-stride`는 반드시 1 — 크게 잡으면 최저점 프레임을 놓쳐 측정값이 통째로 틀어진다.
 
 의도적으로 "올바르게" 수행한 rep의 분포가 임계값 안에 들어오는지 확인한다.
-올바른 rep의 상체−정강이 차가 기준선 위에 몰려 있다면 `SQUAT_TORSO_SHIN_DIFF_WARN`(25°)이
-잘못된 것이다. 실제로 이 절차로 5개 영상(rep 14개)을 재보고 20° → 25°로 상향했다.
+올바른 rep의 상체−정강이 차가 기준선 위에 몰려 있다면 `SQUAT_TORSO_SHIN_DIFF_WARN`(30°)이
+잘못된 것이다. 현재 로컬 correct 14 rep의 최대값 28.7°를 넘는 최소 5° 격자값으로 잡았다.
 
 ### 5-3. 임계값 결정
 

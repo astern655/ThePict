@@ -18,9 +18,9 @@ from ai.pose.keypoints import KP, Keypoint
 
 # 정상 스쿼트 1회: 서 있음 → 완만히 내려감 → 최저점(80도) 유지 → 완만히 일어섬
 CLEAN_REP = [170, 170, 150, 130, 110, 95, 85, 80, 80, 85, 95, 110, 130, 150, 165, 175, 175]
-# 얕은 스쿼트 1회: 최저점이 120도까지만 내려감 (rep으로는 세되 깊이 부족 경고)
-SHALLOW_REP = [170, 170, 160, 150, 135, 125, 120, 120, 125, 135, 150, 165, 175, 175]
-# 거의 앉지 않은 1회: 최저점 132도로 심각 임계(120도)를 넘어 ERROR
+# 얕은 스쿼트 1회: 최저점이 105도까지만 내려감 (rep으로는 세되 깊이 부족 경고)
+SHALLOW_REP = [170, 170, 160, 150, 135, 120, 105, 105, 120, 135, 150, 165, 175, 175]
+# 거의 앉지 않은 1회: 최저점 132도로 심각 임계(110도)를 넘어 ERROR
 VERY_SHALLOW_REP = [170, 170, 160, 150, 138, 132, 132, 138, 150, 165, 175, 175]
 
 
@@ -70,7 +70,7 @@ def _leaning_person(knee_angle_deg: float) -> list[Keypoint]:
     """상체가 앞으로 숙여진 자세(측면 torso_lean 형태, WARNING 범위).
 
     정강이는 수직(무릎이 발목 바로 위)이므로 상체−정강이 차이 = 상체 기울기.
-    어깨가 엉덩이보다 앞(x+100)·위(y-180)로 나가 약 29도 → 25~35도 WARNING 구간.
+    어깨가 엉덩이보다 앞(x+121)·위(y-180)로 나가 약 34도 → 30~40도 WARNING 구간.
     """
     knee = (300.0, 300.0)
     ankle = (300.0, 400.0)
@@ -78,7 +78,7 @@ def _leaning_person(knee_angle_deg: float) -> list[Keypoint]:
     return _set(
         _blank(),
         LEFT_HIP=hip, LEFT_KNEE=knee, LEFT_ANKLE=ankle,
-        LEFT_SHOULDER=(hip[0] + 100.0, hip[1] - 180.0),
+        LEFT_SHOULDER=(hip[0] + 121.0, hip[1] - 180.0),
     )
 
 
@@ -144,14 +144,14 @@ def test_shallow_rep_counted_with_warning() -> None:
 
 def test_torso_rule_relative_to_shin() -> None:
     """상체 앞숙임은 절대각이 아니라 상체−정강이 차이로 판정한다."""
-    # 정강이 수직 기준: 차이 26° → WARNING, 15°·경계값 25°는 정상
-    issue = check_torso(_torso_person(26.0, 0.0), rep=1)
+    # 정강이 수직 기준: 차이 31° → WARNING, 15°·경계값 30°는 정상
+    issue = check_torso(_torso_person(31.0, 0.0), rep=1)
     assert issue is not None and issue.code == "torso_lean"
     assert issue.severity is Severity.WARNING
-    assert issue.threshold == 25.0
+    assert issue.threshold == 30.0
     assert check_torso(_torso_person(15.0, 0.0), rep=1) is None
-    # 경계는 '초과일 때만 승급'이라 정확히 25°는 정상이다
-    assert check_torso(_torso_person(25.0, 0.0), rep=1) is None
+    # 경계는 '초과일 때만 승급'이라 정확히 30°는 정상이다
+    assert check_torso(_torso_person(30.0, 0.0), rep=1) is None
     print("✅ 상체−정강이 차이 기반 torso_lean 규칙 동작")
 
 
@@ -167,12 +167,12 @@ def test_deep_squat_lean_is_not_punished() -> None:
 
 
 def test_torso_rule_severe_tier() -> None:
-    """차이가 35°를 넘으면(굿모닝 자세) ERROR로 올라간다."""
-    issue = check_torso(_torso_person(45.0, 5.0), rep=1)  # 차이 40°
+    """차이가 40°를 넘으면(굿모닝 자세) ERROR로 올라간다."""
+    issue = check_torso(_torso_person(46.0, 5.0), rep=1)  # 차이 41°
     assert issue is not None and issue.code == "excessive_torso_lean"
     assert issue.severity is Severity.ERROR
     # 문구가 WARNING 단계와 달라야 한다 (단계별 특화 안내)
-    warn = check_torso(_torso_person(26.0, 0.0), rep=1)
+    warn = check_torso(_torso_person(31.0, 0.0), rep=1)
     assert issue.message != warn.message
     print("✅ 굿모닝 자세(excessive_torso_lean) → ERROR + 전용 문구")
 
@@ -204,8 +204,8 @@ def test_depth_tiers() -> None:
     assert (error.code, error.severity) == ("very_shallow_depth", Severity.ERROR)
     assert len({good.message, warn.message, error.message}) == 3
     # 경계값은 아래 단계에 속한다 (초과일 때만 다음 단계)
-    assert check_depth(100.0, rep=1).code == "good_depth"
-    assert check_depth(120.0, rep=1).code == "shallow_depth"
+    assert check_depth(90.0, rep=1).code == "good_depth"
+    assert check_depth(110.0, rep=1).code == "shallow_depth"
     print("✅ 깊이 3단계 + 단계별 전용 문구")
 
 
@@ -253,26 +253,29 @@ def test_verdict_incorrect_on_very_shallow_rep() -> None:
 
 def test_issue_carries_threshold() -> None:
     """모든 판정 항목이 자신을 발생시킨 기준선을 measured와 같은 단위로 들고 있다."""
-    assert check_depth(110.0, rep=1).threshold == 100.0   # shallow_depth
-    assert check_depth(135.0, rep=1).threshold == 120.0   # very_shallow_depth
-    assert check_depth(85.0, rep=1).threshold == 100.0    # good_depth
-    # 상체는 두 갈래: 상대 차이(35°)와 절대 상한(70°)이 서로 다른 기준선이다
-    assert check_torso(_torso_person(45.0, 5.0), rep=1).threshold == 35.0
+    assert check_depth(110.0, rep=1).threshold == 90.0    # shallow_depth
+    assert check_depth(135.0, rep=1).threshold == 110.0   # very_shallow_depth
+    assert check_depth(85.0, rep=1).threshold == 90.0     # good_depth
+    # 상체는 두 갈래: 상대 차이(40°)와 절대 상한(70°)이 서로 다른 기준선이다
+    assert check_torso(_torso_person(46.0, 5.0), rep=1).threshold == 40.0
     assert check_torso(_torso_person(75.0, None), rep=1).threshold == 70.0
-    assert check_depth(85.0, rep=1).to_dict()["threshold"] == 100.0
+    assert check_depth(85.0, rep=1).to_dict()["threshold"] == 90.0
     print("✅ Issue.threshold가 지표별 기준선을 정확히 담는다")
 
 
 def test_boundary_uses_displayed_value() -> None:
     """판정은 반올림된 표시값으로 내린다 → '측정값=기준값인데 결함' 모순이 없다."""
-    # 원시 120.04°는 120.0°으로 표시되므로 ERROR가 아니라 WARNING이어야 한다
-    assert check_depth(120.04, rep=1).code == "shallow_depth"
-    assert check_depth(120.06, rep=1).code == "very_shallow_depth"
+    # 원시 90.04°는 90.0°으로 표시되므로 GOOD, 90.06°은 WARNING이다
+    assert check_depth(90.04, rep=1).code == "good_depth"
+    assert check_depth(90.06, rep=1).code == "shallow_depth"
+    # 원시 110.04°는 110.0°으로 표시되므로 ERROR가 아니라 WARNING이어야 한다
+    assert check_depth(110.04, rep=1).code == "shallow_depth"
+    assert check_depth(110.06, rep=1).code == "very_shallow_depth"
     # 절대 상한도 같은 규칙: 70.04°는 70.0°으로 표시되므로 결함이 아니다
     assert check_torso(_torso_person(70.04, None), rep=1) is None
     assert check_torso(_torso_person(70.06, None), rep=1) is not None
     # 상대 차이도 마찬가지
-    assert check_torso(_torso_person(25.04, 0.0), rep=1) is None
+    assert check_torso(_torso_person(30.04, 0.0), rep=1) is None
     print("✅ 경계 판정이 표시값 기준으로 일관")
 
 
@@ -290,7 +293,7 @@ def test_summary_lines_are_actionable_per_rep() -> None:
     assert "최저점" in header and "초" in header, f"시각이 없다: {header}"
     detail = next(l for l in lines if l.startswith("   └"))
     assert "가슴을 세운" in detail, f"교정 행동이 없다: {detail}"
-    assert "측정" in detail and "기준 25.0°" in detail, f"수치 대비가 없다: {detail}"
+    assert "측정" in detail and "기준 30.0°" in detail, f"수치 대비가 없다: {detail}"
     print("✅ rep별 코칭 문구(시각·측정값·기준값·행동) 출력")
 
 

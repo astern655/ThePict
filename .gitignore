@@ -27,6 +27,7 @@ env/
 models/*.pt
 data/videos/
 data/output/
+data/external/
 
 # ── Flutter / Dart (app) ─────────────────────────────────
 # 대부분은 app/.gitignore가 관리하지만, 루트에서도 방어한다.

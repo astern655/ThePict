@@ -43,7 +43,7 @@ def _by_name(keypoints: list[dict]) -> dict:
 RULES = {
     "squat": {
         "knee_angle_min": 70,   # deep squat: knee flexes well past parallel
-        "knee_angle_max": 100,  # standing/too shallow above this
+        "knee_angle_max": 90,   # LLM-FMS + 로컬 정상 rep로 보수적 교정
         "hip_angle_min": 60,
         "hip_angle_max": 100,
         "back_angle_max": 45,  # torso-to-vertical; too high = excessive forward lean
@@ -51,8 +51,8 @@ RULES = {
         # 프레임 단위 evaluate()는 쓰지 않는다. video_analysis.to_set()이 만든 checks를
         # analysis.py가 문장으로 바꿀 때 목표 범위를 여기서 읽는다.
         # 값은 ai/config.py가 원본이며 test_ai_integration.py가 두 값의 일치를 검증한다.
-        "squat_depth_max": 100,      # = ai.config.SQUAT_GOOD_DEPTH_ANGLE (rep 최저점 무릎각)
-        "torso_shin_diff_max": 25,   # = ai.config.SQUAT_TORSO_SHIN_DIFF_WARN (상체−정강이 기울기 차)
+        "squat_depth_max": 90,       # = ai.config.SQUAT_GOOD_DEPTH_ANGLE (rep 최저점 무릎각)
+        "torso_shin_diff_max": 30,   # = ai.config.SQUAT_TORSO_SHIN_DIFF_WARN (상체−정강이 기울기 차)
     },
 }
 

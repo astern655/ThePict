@@ -23,6 +23,8 @@ from ai.analysis.feedback import Issue, RepRecord, Severity
 from ai.analysis.filters import MedianSmoother
 from ai.analysis.geometry import angle_at, torso_incline
 from ai.config import (
+    MAX_TRACKING_GAP_FRAMES,
+    MAX_TRACKING_GAP_SEC,
     SIDE_VIEW_MIN_SAMPLES,
     SIDE_VIEW_RATIO_MAX,
     SQUAT_ANGLE_SMOOTH_WINDOW,
@@ -135,12 +137,12 @@ def _view_ratio(person: Person) -> float | None:
 def check_depth(min_knee_angle: float, rep: int) -> Issue:
     """최저점 무릎각으로 깊이를 판정. 항상 하나(좋음/부족/거의 안 앉음)를 반환.
 
-    각이 클수록 덜 앉은 것이다. 심각 임계(120°)를 넘으면 스쿼트라 보기 어려운
-    수준이라 ERROR로 올려 rep 판정을 '잘못됨'으로 만든다.
+    각이 클수록 덜 앉은 것이다. 설정된 심각 임계를 넘으면 ERROR로 올려
+    rep 판정을 '잘못됨'으로 만든다.
     """
-    # 표시값과 판정값을 항상 같게 두려고 반올림 뒤에 비교한다. 원시 120.04°는
-    # 120.0°으로 표시되므로 판정도 120.0° 기준으로 내려야 "측정 120.0° / 기준
-    # 120.0° 이하"인데 ERROR인 모순이 생기지 않는다. (경계는 초과일 때만 승급)
+    # 표시값과 판정값을 항상 같게 두려고 반올림 뒤에 비교한다. 경계 부근 원시값이
+    # 기준값으로 표시되면 판정도 그 표시값 기준으로 내려야 "측정값=기준값인데
+    # ERROR"인 모순이 생기지 않는다. (경계는 초과일 때만 승급)
     measured = round(min_knee_angle, 1)
     if measured > SQUAT_SEVERE_DEPTH_ANGLE:
         return Issue(
@@ -185,8 +187,8 @@ def check_torso(person: Person, rep: int) -> Issue | None:
     shin = _shin_incline(person)
     if shin is None:
         return None  # 다리가 안 보이면 상대 판정은 보류(절대 상한만 위에서 검사)
-    # 표시값과 판정값을 같게 두려고 반올림 뒤에 비교한다. 따라서 원시 25.04°는
-    # 25.0°이 되어 경고가 아니다(경계는 '초과일 때만 승급'이므로 의도된 동작).
+    # 표시값과 판정값을 같게 두려고 반올림 뒤에 비교한다. 따라서 경계 바로 위의
+    # 원시값도 표시상 경계값이면 경고가 아니다('초과'일 때만 승급).
     diff = round(incline - shin, 1)
     if diff > SQUAT_TORSO_SHIN_DIFF_SEVERE:
         return Issue(
@@ -221,6 +223,32 @@ class SquatAnalyzer(ExerciseAnalyzer):
         self._dip_start_frame: int | None = None
         self._dip_min = 180.0
         self._view_ratios: list[float] = []        # 측면 검증 표본
+        # 추적 끊김 처리: 마지막으로 무릎각을 실제로 잰 프레임 번호.
+        self._last_measured_frame: int | None = None
+        # 끊김 직후에는 '완전히 선 자세'를 한 번 다시 볼 때까지 카운트를 멈춘다.
+        # (끊김 중에 이미 앉아 있었다면 내려가는 구간을 못 본 rep이라 셀 수 없다)
+        self._await_standing = False
+
+    def _max_gap_frames(self) -> int:
+        """추적 끊김으로 볼 프레임 간격. fps를 알면 초 단위 기준으로 환산한다."""
+        if self.fps is None:
+            return MAX_TRACKING_GAP_FRAMES
+        return max(1, round(self.fps * MAX_TRACKING_GAP_SEC))
+
+    def _handle_gap(self) -> None:
+        """유실 구간이 임계보다 길 때: 진행 중이던 rep을 폐기하고 필터를 비운다.
+
+        유실 구간을 없던 시간처럼 이어붙이면 (1) 최저점을 놓쳐 깊이가 실제보다
+        얕게 판정되고 (2) 유실 전후 값이 중앙값 필터에서 이웃으로 섞인다.
+        조용히 틀린 값을 내느니 그 rep을 버리고 사실을 남기는 편이 낫다.
+        """
+        self.report.tracking_gap_count += 1
+        if self.state == "DOWN" or self._dip_start_frame is not None:
+            self.report.dropped_rep_count += 1
+        self.state = "UP"
+        self._await_standing = True
+        self._smoother.reset()
+        self._reset_rep_tracking()
 
     def update(self, person: Person | None, frame_index: int) -> None:
         if person is None:
@@ -233,8 +261,24 @@ class SquatAnalyzer(ExerciseAnalyzer):
         raw_angle = _mid_knee_angle(person)
         if raw_angle is None:
             return
+
+        # 직전에 각을 잰 프레임과의 간격으로 유실 구간 길이를 판단한다.
+        # (사람 미검출·다리 미가시·추론 실패 프레임은 모두 여기서 '간격'으로 나타난다)
+        if (
+            self._last_measured_frame is not None
+            and frame_index - self._last_measured_frame > self._max_gap_frames()
+        ):
+            self._handle_gap()
+        self._last_measured_frame = frame_index
+
         knee_angle = self._smoother.push(raw_angle)
         self._last_angle = knee_angle
+
+        # 끊김 직후: 완전히 선 자세를 다시 볼 때까지 상태기계를 진행하지 않는다.
+        if self._await_standing:
+            if knee_angle <= SQUAT_KNEE_UP_ANGLE:
+                return
+            self._await_standing = False
 
         # --- dip(내려감 구간) 추적: 시작·최저각 ---
         if knee_angle < SQUAT_KNEE_UP_ANGLE:
@@ -323,6 +367,18 @@ class SquatAnalyzer(ExerciseAnalyzer):
                 message="앉은 자세에서 영상이 끝나 마지막 동작 1회는 횟수에 포함되지 "
                         "않았습니다. 완전히 일어선 뒤 촬영을 종료해 주세요.",
                 measured=round(self.min_knee_in_rep, 1),
+            ))
+
+        # 추적이 끊긴 구간이 있으면 '몇 회가 왜 빠졌는지'를 남긴다.
+        if self.report.tracking_gap_count:
+            msg = (f"관절 추적이 {self.report.tracking_gap_count}번 끊겼습니다. "
+                   f"전신이 화면 안에 계속 들어오도록 촬영해 주세요.")
+            if self.report.dropped_rep_count:
+                msg += (f" 끊긴 구간에 걸친 동작 {self.report.dropped_rep_count}회는 "
+                        f"정확히 잴 수 없어 횟수에서 제외했습니다.")
+            self.report.add_video_issue(Issue(
+                rep_index=0, code="tracking_gap", severity=Severity.WARNING,
+                message=msg, measured=float(self.report.tracking_gap_count),
             ))
 
         if self.report.partial_rep_count:

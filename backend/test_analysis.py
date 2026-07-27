@@ -81,7 +81,7 @@ def test_bad_joint_is_named_with_counts_and_range():
     bad = " ".join(a["bad"])
     assert "무릎 각도" in bad
     assert "3세트 중 2세트" in bad
-    assert "70~100°" in bad
+    assert "70~90°" in bad
     assert "얕게" in bad  # 범위 위로 벗어남 = 얕은 스쿼트
 
     good = " ".join(a["good"])
