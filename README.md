@@ -1,12 +1,14 @@
-# Hohowatt
+﻿# Hohowatt
 
-YOLO-pose 기반 헬스 자세 교정 앱. 스쿼트 영상을 분석해 **반복 횟수**와 **회차별
+YOLO-pose 기반 헬스 자세 교정 앱. 운동 영상을 분석해 **반복 횟수**와 **회차별
 자세 판정**(올바름/교정 필요/잘못됨)을 내고, 세트·휴식을 관리하며, 운동 후
 **문장으로 된 자세 피드백**을 준다.
 
+분석하는 운동: **스쿼트**, **푸시업** (둘 다 측면 촬영 전용)
+
 - **프론트엔드**: Flutter (`app/`)
 - **백엔드**: FastAPI + SQLite (`backend/`)
-- **AI 엔진**: YOLO Pose + 스쿼트 분석 (`ai/`) — 실제 자세 판정은 전부 여기서 한다
+- **AI 엔진**: YOLO Pose + 운동별 규칙 (`ai/`) — 실제 자세 판정은 전부 여기서 한다
 
 ## 구조
 
@@ -33,8 +35,12 @@ models/    YOLO 가중치 (커밋하지 않음, 최초 실행 시 자동 다운�
 `/inference/video` 응답의 `set` 은 그대로 `POST /sessions` 의 `sets[0]` 에 넣을 수
 있고, 그러면 기존 문장 분석(`GET /sessions/{id}/analysis`)이 그대로 이어진다.
 
-**스쿼트 영상은 측면 촬영만 받는다.** 정면 영상은 깊이·상체 판정이 부정확해서
-리포트에 경고가 붙는다. 근거와 촬영 가이드: `docs/CAPTURE_AND_SQUAT_CRITERIA.md`.
+**영상은 측면 촬영만 받는다.** 정면 영상은 깊이·상체 판정이 부정확해서 리포트에
+경고가 붙는다. 근거와 촬영 가이드: 스쿼트는 `docs/CAPTURE_AND_SQUAT_CRITERIA.md`,
+푸시업은 `docs/PUSHUP_CRITERIA.md`.
+
+⚠️ **푸시업 임계값은 아직 실영상으로 검증되지 않았다**(관례값).
+검증에 필요한 영상 목록: `docs/PENDING_VIDEO_WORK.md`.
 
 ## 실행
 
@@ -98,8 +104,18 @@ CI(`.github/workflows/backend.yml`)는 백엔드만 돌리므로, AI 엔진 변�
 
 ## 튜닝
 
-자세 판정 임계값은 전부 `ai/config.py` 한 곳에 있다. 측정 근거는
-`docs/SQUAT_TUNING.md`, `docs/CAPTURE_AND_SQUAT_CRITERIA.md`.
+자세 판정 임계값은 전부 `ai/config.py` 한 곳에 있다. 판정 기준과 근거는 운동별로:
+
+| 운동 | 판정 기준 | 임계값 근거·튜닝 |
+|---|---|---|
+| 스쿼트 | `docs/CAPTURE_AND_SQUAT_CRITERIA.md` | `docs/SQUAT_TUNING.md` |
+| 푸시업 | `docs/PUSHUP_CRITERIA.md` | `docs/PUSHUP_TUNING.md` |
+
+실영상 분포를 다시 뽑으려면:
+
+```bash
+python -m tools.measure_distribution --exercise squat
+```
 
 `backend/pose_eval.py`의 `squat_depth_max` / `torso_shin_diff_max` 는 `ai/config.py`
 값을 복사한 것이다. 엔진 쪽을 바꾸면 여기도 바꿔야 하며,

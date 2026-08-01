@@ -54,7 +54,21 @@ RULES = {
         "squat_depth_max": 90,       # = ai.config.SQUAT_GOOD_DEPTH_ANGLE (rep 최저점 무릎각)
         "torso_shin_diff_max": 30,   # = ai.config.SQUAT_TORSO_SHIN_DIFF_WARN (상체−정강이 기울기 차)
     },
+    "pushup": {
+        # 영상 분석 전용. 아래 evaluate()의 프레임 단위 판정은 스쿼트 전용이라
+        # 푸시업에는 knee/hip/back 규칙을 두지 않는다(FRAME_RULE_KEYS 참고).
+        "pushup_depth_max": 90,     # = ai.config.PUSHUP_GOOD_DEPTH_ANGLE (rep 최저점 팔꿈치각)
+        "body_line_dev_max": 15,    # = ai.config.PUSHUP_BODY_LINE_WARN (몸통 일직선 이탈각)
+    },
 }
+
+# evaluate()가 프레임 하나를 판정하려면 이 키들이 다 있어야 한다. 영상 분석 항목만
+# 가진 운동(푸시업)은 프레임 단위 판정을 지원하지 않으므로 unsupported로 빠진다.
+FRAME_RULE_KEYS = (
+    "knee_angle_min", "knee_angle_max",
+    "hip_angle_min", "hip_angle_max",
+    "back_angle_max",
+)
 
 
 def _check(name: str, value: float, low: float, high: float, message_bad: str) -> dict:
@@ -68,7 +82,7 @@ def _check(name: str, value: float, low: float, high: float, message_bad: str) -
 
 
 def evaluate(keypoints: list[dict], exercise_id: str) -> dict:
-    if exercise_id not in RULES:
+    if exercise_id not in RULES or not all(k in RULES[exercise_id] for k in FRAME_RULE_KEYS):
         return {
             "exercise_id": exercise_id,
             "form_score": 0.0,

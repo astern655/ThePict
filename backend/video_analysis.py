@@ -11,7 +11,7 @@ rep별 올바름/교정필요/잘못됨 판정, 측면 촬영 검증은 영상 �
 
 import ai_bridge
 
-SUPPORTED_EXERCISES = {"squat"}
+SUPPORTED_EXERCISES = {"squat", "pushup"}
 
 
 class UnsupportedExercise(ValueError):
@@ -22,13 +22,31 @@ class UnsupportedExercise(ValueError):
 # (기존 pose_eval의 form_score와 같은 0~100 척도라 앱/분석 코드가 그대로 쓴다)
 VERDICT_SCORE = {"correct": 100.0, "needs_work": 70.0, "incorrect": 30.0}
 
-# AI 엔진의 결함 코드 → `checks` 항목 이름.
-# 깊이는 rep마다 항상 판정되고(good_depth 포함), 상체는 결함일 때만 측정값이 남는다.
+# 깊이 코드는 운동이 공유한다(스쿼트=무릎각, 푸시업=팔꿈치각). rep마다 항상 판정되므로
+# good_depth도 포함된다. 두 번째 축(스쿼트 상체 / 푸시업 몸통)은 결함일 때만 남는다.
 DEPTH_CODES = {"good_depth", "shallow_depth", "very_shallow_depth"}
 TORSO_CODES = {"torso_lean", "excessive_torso_lean"}
+BODY_LINE_CODES = {"body_line_break", "excessive_body_line_break"}
 
 DEPTH_CHECK = "squat_depth"
 TORSO_CHECK = "torso_shin_diff"
+
+# 운동별로 `checks` 항목 이름과 안내 문구가 다르다. 코드(엔진) → 이름(API) 사상을
+# 여기 한곳에 모아 둔다. 새 운동을 붙이면 이 표에 한 줄 늘린다.
+EXERCISE_CHECKS = {
+    "squat": {
+        "depth_check": DEPTH_CHECK,
+        "form_check": TORSO_CHECK,
+        "form_codes": TORSO_CODES,
+        "form_message": "{n}회차에서 상체가 과하게 앞으로 접혔습니다",
+    },
+    "pushup": {
+        "depth_check": "pushup_depth",
+        "form_check": "body_line_dev",
+        "form_codes": BODY_LINE_CODES,
+        "form_message": "{n}회차에서 몸통이 일직선에서 벗어났습니다",
+    },
+}
 
 
 def analyze(video_path: str, exercise_id: str, *, save_annotated: bool = False) -> dict:
@@ -54,13 +72,14 @@ def _mean(values: list[float]) -> float:
     return round(sum(values) / len(values), 1)
 
 
-def to_set(report: dict) -> dict:
+def to_set(report: dict, exercise_id: str = "squat") -> dict:
     """리포트를 `/sessions` 의 세트 하나로 낮춘다.
 
-    checks는 rep들의 측정값을 항목별로 평균 낸 것이다. 상체 항목은 엔진이 실제로
-    잰 rep이 하나도 없으면(= 모든 rep이 정상) 빼는데, 재지도 않은 값을 "정상"으로
-    지어내지 않기 위해서다.
+    checks는 rep들의 측정값을 항목별로 평균 낸 것이다. 두 번째 축(스쿼트 상체 /
+    푸시업 몸통) 항목은 엔진이 실제로 잰 rep이 하나도 없으면(= 모든 rep이 정상)
+    빼는데, 재지도 않은 값을 "정상"으로 지어내지 않기 위해서다.
     """
+    spec = EXERCISE_CHECKS.get(exercise_id, EXERCISE_CHECKS["squat"])
     rep_count = report["rep_count"]
     verdicts = report["rep_verdicts"]
     form_score = (
@@ -71,7 +90,7 @@ def to_set(report: dict) -> dict:
 
     depth_values: list[float] = []
     depth_bad = 0
-    torso_values: list[float] = []
+    form_values: list[float] = []
 
     for rep in range(1, rep_count + 1):
         for issue in _rep_issues(report, rep):
@@ -81,24 +100,24 @@ def to_set(report: dict) -> dict:
                 depth_values.append(issue["measured"])
                 if issue["severity"] != "good":
                     depth_bad += 1
-            elif issue["code"] in TORSO_CODES:
-                torso_values.append(issue["measured"])
+            elif issue["code"] in spec["form_codes"]:
+                form_values.append(issue["measured"])
 
     checks = []
     if depth_values:
         checks.append({
-            "name": DEPTH_CHECK,
+            "name": spec["depth_check"],
             "value": _mean(depth_values),
             "status": "bad" if depth_bad else "ok",
             "message": "" if not depth_bad else f"{depth_bad}회차에서 깊이가 모자랐습니다",
         })
-    if torso_values:
+    if form_values:
         # 측정값이 남았다는 것 자체가 기준선을 넘었다는 뜻이다(정상이면 엔진이 침묵).
         checks.append({
-            "name": TORSO_CHECK,
-            "value": _mean(torso_values),
+            "name": spec["form_check"],
+            "value": _mean(form_values),
             "status": "bad",
-            "message": f"{len(torso_values)}회차에서 상체가 과하게 앞으로 접혔습니다",
+            "message": spec["form_message"].format(n=len(form_values)),
         })
 
     return {"reps": rep_count, "form_score": form_score, "checks": checks}

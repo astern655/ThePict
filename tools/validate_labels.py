@@ -1,4 +1,4 @@
-"""라벨 파일 검사 + 엔진 출력 대조 (스쿼트, 측면 촬영 전용).
+"""라벨 파일 검사 + 엔진 출력 대조 (측면 촬영 전용).
 
 두 가지 일을 한다.
 
@@ -10,9 +10,13 @@
 라벨이 정답 기준이다. rep 개수가 어긋나면 구간 시각의 겹침으로 짝을 지어,
 검출 못 한 rep(missed)과 없는 rep을 만든 것(spurious)을 따로 센다.
 
+운동별로 결함 코드 표가 다르므로(`EXERCISE_SCHEMA`) `--exercise`로 고른다.
+라벨 파일도 운동마다 따로 둔다(`data/<운동>_labels.json`).
+
 실행:
-    python -m tools.validate_labels --check-only        # 라벨 파일만 검사
-    python -m tools.validate_labels                     # 영상까지 돌려 대조
+    python -m tools.validate_labels --check-only            # 스쿼트 라벨만 검사
+    python -m tools.validate_labels                         # 영상까지 돌려 대조
+    python -m tools.validate_labels --exercise pushup       # 푸시업
 """
 from __future__ import annotations
 
@@ -28,27 +32,58 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 # --- 라벨 스키마 ---------------------------------------------------------
 # 코드 → 심각도. 라벨의 판정(label)은 이 표에서 기계적으로 파생되므로,
 # 라벨러가 판정을 직접 고민할 필요가 없다(고민하면 오히려 모순이 생긴다).
-REP_CODE_SEVERITY: dict[str, str] = {
-    "shallow_depth": "warning",
-    "very_shallow_depth": "error",
-    "torso_lean": "warning",
-    "excessive_torso_lean": "error",
+#
+# 운동마다 두 번째 축이 다르다(스쿼트=상체 앞숙임, 푸시업=몸통 일직선). 깊이 축은
+# 코드 이름을 공유한다. 다른 운동의 코드를 섞어 적으면 '알 수 없는 코드'로 걸린다.
+_DEPTH_SEVERITY = {"shallow_depth": "warning", "very_shallow_depth": "error"}
+
+EXERCISE_SCHEMA: dict[str, dict] = {
+    "squat": {
+        "code_severity": {
+            **_DEPTH_SEVERITY,
+            "torso_lean": "warning",
+            "excessive_torso_lean": "error",
+        },
+        # 한 rep에서 같은 축의 코드는 하나만 나올 수 있다(깊이는 3단계 중 하나).
+        "axes": {
+            "깊이": frozenset(_DEPTH_SEVERITY),
+            "상체 앞숙임": frozenset({"torso_lean", "excessive_torso_lean"}),
+        },
+        "labels_path": "data/squat_labels.json",
+    },
+    "pushup": {
+        "code_severity": {
+            **_DEPTH_SEVERITY,
+            "body_line_break": "warning",
+            "excessive_body_line_break": "error",
+        },
+        "axes": {
+            "깊이": frozenset(_DEPTH_SEVERITY),
+            "몸통 일직선": frozenset({"body_line_break", "excessive_body_line_break"}),
+        },
+        "labels_path": "data/pushup_labels.json",
+    },
 }
+DEFAULT_EXERCISE = "squat"
+
 VIDEO_CODES = {"partial_reps", "low_detection", "not_side_view"}
 
-# 한 rep에서 같은 축의 코드는 하나만 나올 수 있다(깊이는 3단계 중 하나).
-CODE_AXES: dict[str, frozenset[str]] = {
-    "깊이": frozenset({"shallow_depth", "very_shallow_depth"}),
-    "상체 앞숙임": frozenset({"torso_lean", "excessive_torso_lean"}),
-}
-
 VALID_LABELS = {"correct", "needs_work", "incorrect"}
-REQUIRED_VIEW = "side"  # 스쿼트는 측면 촬영만 받는다
+REQUIRED_VIEW = "side"  # 두 운동 모두 측면 촬영만 받는다
 
 
-def derive_label(codes: set[str]) -> str:
+def _schema(exercise: str) -> dict:
+    if exercise not in EXERCISE_SCHEMA:
+        raise ValueError(
+            f"라벨 스키마가 없는 운동: {exercise!r}. 가능: {', '.join(EXERCISE_SCHEMA)}"
+        )
+    return EXERCISE_SCHEMA[exercise]
+
+
+def derive_label(codes: set[str], exercise: str = DEFAULT_EXERCISE) -> str:
     """결함 코드 집합에서 rep 판정을 파생한다(엔진의 verdict_from_issues와 같은 규칙)."""
-    severities = {REP_CODE_SEVERITY[c] for c in codes if c in REP_CODE_SEVERITY}
+    severity = _schema(exercise)["code_severity"]
+    severities = {severity[c] for c in codes if c in severity}
     if "error" in severities:
         return "incorrect"
     if "warning" in severities:
@@ -58,8 +93,10 @@ def derive_label(codes: set[str]) -> str:
 
 # --- 1. 라벨 파일 자체 검사 ----------------------------------------------
 
-def check_label_file(entries: list[dict]) -> list[str]:
+def check_label_file(entries: list[dict], exercise: str = DEFAULT_EXERCISE) -> list[str]:
     """라벨 파일의 구조적 오류를 모아 반환한다(빈 리스트면 정상)."""
+    schema = _schema(exercise)
+    code_severity, axes = schema["code_severity"], schema["axes"]
     problems: list[str] = []
     seen_ids: set[str] = set()
 
@@ -68,6 +105,14 @@ def check_label_file(entries: list[dict]) -> list[str]:
         if vid in seen_ids:
             problems.append(f"[{vid}] id가 중복됩니다.")
         seen_ids.add(vid)
+
+        # 라벨 파일에 운동을 적어 뒀다면 검사 중인 운동과 같아야 한다.
+        # (스쿼트 라벨을 푸시업으로 채점하면 코드가 전부 '알 수 없는 코드'가 된다)
+        declared = entry.get("exercise")
+        if declared is not None and declared != exercise:
+            problems.append(
+                f"[{vid}] exercise가 '{declared}'인데 '{exercise}'로 검사하고 있습니다."
+            )
 
         if entry.get("view") != REQUIRED_VIEW:
             problems.append(
@@ -98,11 +143,11 @@ def check_label_file(entries: list[dict]) -> list[str]:
                 problems.append(f"{tag}: rep_index는 1부터 순서대로여야 합니다(기대 {position}).")
 
             codes = set(rep.get("feedback_codes", []))
-            unknown = codes - set(REP_CODE_SEVERITY)
+            unknown = codes - set(code_severity)
             if unknown:
                 problems.append(f"{tag}: 알 수 없는 코드 {sorted(unknown)}")
 
-            for axis_name, axis_codes in CODE_AXES.items():
+            for axis_name, axis_codes in axes.items():
                 if len(codes & axis_codes) > 1:
                     problems.append(
                         f"{tag}: '{axis_name}' 축의 코드를 두 개 이상 적었습니다 "
@@ -113,7 +158,7 @@ def check_label_file(entries: list[dict]) -> list[str]:
             if label not in VALID_LABELS:
                 problems.append(f"{tag}: label '{label}'은 {sorted(VALID_LABELS)} 중 하나여야 합니다.")
             else:
-                expected = derive_label(codes - unknown)
+                expected = derive_label(codes - unknown, exercise)
                 if label != expected:
                     problems.append(
                         f"{tag}: 코드 {sorted(codes) or '[]'}면 판정은 '{expected}'인데 "
@@ -313,24 +358,30 @@ def print_summary(tally: Tally) -> None:
 # --- 진입점 --------------------------------------------------------------
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="스쿼트 라벨 검사 및 엔진 출력 대조")
-    parser.add_argument("--labels", default="data/squat_labels.json", help="라벨 JSON 경로")
+    parser = argparse.ArgumentParser(description="라벨 검사 및 엔진 출력 대조")
+    parser.add_argument("--exercise", default=DEFAULT_EXERCISE, choices=sorted(EXERCISE_SCHEMA),
+                        help=f"검사할 운동 (기본: {DEFAULT_EXERCISE})")
+    parser.add_argument("--labels", default=None,
+                        help="라벨 JSON 경로(생략하면 운동별 기본 경로)")
     parser.add_argument("--check-only", action="store_true",
                         help="영상을 돌리지 않고 라벨 파일 구조만 검사")
     parser.add_argument("--frame-stride", type=int, default=1,
                         help="N프레임마다 1장 처리(기본 1). 크게 잡으면 최저점을 놓친다")
+    parser.add_argument("--model", default=None,
+                        help="YOLO pose 가중치 재정의(모델 크기 비교 실험용, 예: yolo11s-pose.pt)")
     args = parser.parse_args()
 
-    labels_path = PROJECT_ROOT / args.labels
+    labels_rel = args.labels or _schema(args.exercise)["labels_path"]
+    labels_path = PROJECT_ROOT / labels_rel
     if not labels_path.exists():
         print(f"라벨 파일이 없습니다: {labels_path}")
         return 2
     entries = json.loads(labels_path.read_text(encoding="utf-8"))
 
     print("=" * 72)
-    print(f"라벨 파일 검사: {args.labels} (영상 {len(entries)}개)")
+    print(f"라벨 파일 검사: {labels_rel} (운동 {args.exercise}, 영상 {len(entries)}개)")
     print("=" * 72)
-    problems = check_label_file(entries)
+    problems = check_label_file(entries, args.exercise)
     if problems:
         for p in problems:
             print(f"  {p}")
@@ -355,7 +406,10 @@ def main() -> int:
     from ai.engine import analyze_video
     from ai.pose.detector import PoseDetector
 
-    detector = PoseDetector()  # 모델을 한 번만 로드해 영상마다 재사용
+    # 모델을 한 번만 로드해 영상마다 재사용. 가중치는 운동별로 다르다.
+    from ai.config import pose_model_for
+
+    detector = PoseDetector(args.model or pose_model_for(args.exercise))
     tally = Tally()
 
     for entry, video_path in found:
@@ -363,7 +417,7 @@ def main() -> int:
         print(f"영상: {entry['id']}  ({entry['video_path']})")
         print("=" * 72)
         report = analyze_video(
-            video_path, exercise="squat",
+            video_path, exercise=args.exercise,
             save_annotated=False, frame_stride=args.frame_stride, detector=detector,
         )
         for line in compare_video(report, entry, tally):

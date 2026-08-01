@@ -11,16 +11,23 @@ from __future__ import annotations
 
 import math
 
-from ai.analysis.exercises.squat import SquatAnalyzer, check_depth, check_torso
+from ai.analysis.exercises.squat import (
+    SquatAnalyzer,
+    check_depth,
+    check_depth_femur,
+    check_torso,
+)
 from ai.analysis.feedback import RepVerdict, Severity
 from ai.analysis.geometry import angle_at
 from ai.pose.keypoints import KP, Keypoint
 
 # 정상 스쿼트 1회: 서 있음 → 완만히 내려감 → 최저점(80도) 유지 → 완만히 일어섬
+# 정강이 수직 자세에서 대퇴 거상각 = 무릎각 − 90 이므로, 최저점 80° → 거상각 −10° (GOOD)
 CLEAN_REP = [170, 170, 150, 130, 110, 95, 85, 80, 80, 85, 95, 110, 130, 150, 165, 175, 175]
-# 얕은 스쿼트 1회: 최저점이 105도까지만 내려감 (rep으로는 세되 깊이 부족 경고)
-SHALLOW_REP = [170, 170, 160, 150, 135, 120, 105, 105, 120, 135, 150, 165, 175, 175]
-# 거의 앉지 않은 1회: 최저점 132도로 심각 임계(110도)를 넘어 ERROR
+# 얕은 스쿼트 1회: 최저점 무릎각 125° → 거상각 35° (WARNING 구간 30~50°)
+SHALLOW_REP = [170, 170, 160, 150, 140, 132, 125, 125, 132, 140, 150, 165, 175, 175]
+# 거의 앉지 않은 1회: 최저점 무릎각 132°. 정강이를 앞으로 20° 기울인 자세와 함께 쓰면
+# 거상각 = 132 + 20 − 90 = 62° 로 심각 임계(50°)를 넘어 ERROR
 VERY_SHALLOW_REP = [170, 170, 160, 150, 138, 132, 132, 138, 150, 165, 175, 175]
 
 
@@ -51,13 +58,17 @@ def _hip_for_angle(knee: tuple[float, float], ankle: tuple[float, float], angle_
     return (hx, hy)
 
 
-def _upright_person(knee_angle_deg: float) -> list[Keypoint]:
+def _upright_person(knee_angle_deg: float, shin_forward_deg: float = 0.0) -> list[Keypoint]:
     """상체를 곧게 세운 정상 자세. 무릎각만 원하는 값으로 준다.
 
     어깨가 엉덩이 바로 위(같은 x)라 상체 기울기 0도 → torso_lean에 걸리지 않는다.
+    shin_forward_deg로 정강이를 앞으로 기울이면 같은 무릎각에서 엉덩이가 더 높아진다:
+    대퇴 거상각 = 무릎각 + shin_forward_deg − 90. (깊이 ERROR 사례를 만들 때 쓴다 —
+    정강이 수직으로는 rep이 성립하는 무릎각 범위에서 거상각이 50°를 넘을 수 없다)
     """
+    shin = math.radians(shin_forward_deg)
     knee = (300.0, 300.0)
-    ankle = (300.0, 400.0)  # 무릎 바로 아래
+    ankle = (knee[0] - 100.0 * math.sin(shin), knee[1] + 100.0 * math.cos(shin))
     hip = _hip_for_angle(knee, ankle, knee_angle_deg)
     return _set(
         _blank(),
@@ -79,6 +90,23 @@ def _leaning_person(knee_angle_deg: float) -> list[Keypoint]:
         _blank(),
         LEFT_HIP=hip, LEFT_KNEE=knee, LEFT_ANKLE=ankle,
         LEFT_SHOULDER=(hip[0] + 121.0, hip[1] - 180.0),
+    )
+
+
+def _person_with_lean(knee_angle_deg: float, lean_deg: float) -> list[Keypoint]:
+    """무릎각과 상체 기울기를 함께 지정한 자세(정강이는 수직 = 0°).
+
+    상체−정강이 차이가 정확히 lean_deg가 되므로, 결함 범위 안팎의 rep을
+    의도한 측정값으로 만들 수 있다.
+    """
+    knee = (300.0, 300.0)
+    ankle = (300.0, 400.0)  # 무릎 바로 아래 → 정강이 기울기 0°
+    hip = _hip_for_angle(knee, ankle, knee_angle_deg)
+    lean = math.radians(lean_deg)
+    return _set(
+        _blank(),
+        LEFT_HIP=hip, LEFT_KNEE=knee, LEFT_ANKLE=ankle,
+        LEFT_SHOULDER=(hip[0] + 120.0 * math.sin(lean), hip[1] - 120.0 * math.cos(lean)),
     )
 
 
@@ -194,19 +222,35 @@ def test_torso_needs_shin_for_relative_tiers() -> None:
     print("✅ 정강이 미검출 시 상대 판정 보류 + 절대 상한은 유지")
 
 
-def test_depth_tiers() -> None:
-    """깊이 3단계(좋음/부족/거의 안 앉음)가 각각 다른 코드·등급·문구를 낸다."""
+def test_depth_femur_tiers() -> None:
+    """깊이 3단계(좋음/부족/거의 안 앉음)가 대퇴 거상각 기준으로 판정된다. (1차 지표)"""
+    good = check_depth_femur(0.0, rep=1)     # 허벅지 수평 = 표준 코칭 기준
+    warn = check_depth_femur(40.0, rep=1)
+    error = check_depth_femur(60.0, rep=1)
+    assert (good.code, good.severity) == ("good_depth", Severity.GOOD)
+    assert (warn.code, warn.severity) == ("shallow_depth", Severity.WARNING)
+    assert (error.code, error.severity) == ("very_shallow_depth", Severity.ERROR)
+    assert len({good.message, warn.message, error.message}) == 3
+    # 경계값은 아래 단계에 속한다 (초과일 때만 다음 단계)
+    assert check_depth_femur(30.0, rep=1).code == "good_depth"
+    assert check_depth_femur(50.0, rep=1).code == "shallow_depth"
+    # 엉덩이가 무릎보다 낮은 깊은 스쿼트(음수 거상각)도 당연히 GOOD
+    assert check_depth_femur(-15.0, rep=1).code == "good_depth"
+    print("✅ 대퇴 거상각 깊이 3단계 + 단계별 전용 문구")
+
+
+def test_depth_knee_fallback_tiers() -> None:
+    """최저점 스냅샷이 없을 때만 쓰는 무릎각 예비 기준도 3단계가 유지된다."""
     good = check_depth(85.0, rep=1)
     warn = check_depth(110.0, rep=1)
     error = check_depth(135.0, rep=1)
     assert (good.code, good.severity) == ("good_depth", Severity.GOOD)
     assert (warn.code, warn.severity) == ("shallow_depth", Severity.WARNING)
     assert (error.code, error.severity) == ("very_shallow_depth", Severity.ERROR)
-    assert len({good.message, warn.message, error.message}) == 3
     # 경계값은 아래 단계에 속한다 (초과일 때만 다음 단계)
     assert check_depth(90.0, rep=1).code == "good_depth"
     assert check_depth(110.0, rep=1).code == "shallow_depth"
-    print("✅ 깊이 3단계 + 단계별 전용 문구")
+    print("✅ 무릎각 예비 기준 3단계 유지")
 
 
 # --- 통합: 최저점 스냅샷으로 판정하는지 + rep별 종합 판정 ----------------
@@ -237,10 +281,15 @@ def test_verdict_uses_bottom_frame() -> None:
 
 
 def test_verdict_incorrect_on_very_shallow_rep() -> None:
-    """심각 임계를 넘은 깊이 부족은 rep 판정을 '잘못됨'(incorrect)으로 만든다."""
+    """심각 임계를 넘은 깊이 부족은 rep 판정을 '잘못됨'(incorrect)으로 만든다.
+
+    정강이를 20° 기울여 최저점 거상각 62°(>50°)를 만든다. 정강이 수직으로는
+    rep이 성립하는 무릎각(<140°)에서 거상각 50°를 넘을 수 없다 — 실제로도
+    '거의 안 앉은' 스쿼트는 무릎이 앞으로 나가거나 엉덩이만 살짝 빠지는 자세다.
+    """
     analyzer = SquatAnalyzer()
     for i, ang in enumerate(VERY_SHALLOW_REP):
-        analyzer.update(_upright_person(ang), i)
+        analyzer.update(_upright_person(ang, shin_forward_deg=20.0), i)
     report = analyzer.finalize()
     assert report.rep_count == 1, f"기대 1회, 실제 {report.rep_count}회"
     codes = {i.code for i in report.issues_for_rep(1)}
@@ -249,13 +298,92 @@ def test_verdict_incorrect_on_very_shallow_rep() -> None:
     print("✅ 거의 앉지 않은 rep → 판정 '잘못됨'")
 
 
+# --- 측정값 기록(임계값 재검증용) ---------------------------------------
+
+def test_bottom_measurements_recorded_even_when_correct() -> None:
+    """결함이 아니어도 최저점 상체·정강이 기울기가 rep 기록에 남아야 한다.
+
+    check_torso는 정상 범위면 Issue를 만들지 않는다. 측정값이 여기 남지 않으면
+    '올바른 스쿼트의 실제 분포'를 못 봐서 임계값을 데이터로 재검증할 수 없다.
+    """
+    analyzer = SquatAnalyzer(fps=30.0)
+    for i, ang in enumerate(CLEAN_REP):
+        analyzer.update(_person_with_lean(ang, 20.0), i)  # 20° → 결함 아님
+    report = analyzer.finalize()
+
+    assert report.rep_verdict(1) is RepVerdict.CORRECT
+    assert not [i for i in report.issues_for_rep(1) if i.code == "torso_lean"]
+    record = report.rep_record(1)
+    assert record.bottom_torso_incline == 20.0, record.bottom_torso_incline
+    assert record.bottom_shin_incline == 0.0, record.bottom_shin_incline
+    assert record.bottom_torso_shin_diff == 20.0
+    # 깊이 판정 지표(대퇴 거상각)도 함께 남는다. 정강이 수직이므로 거상각 =
+    # 무릎각 − 90이고, 최저점(80°) ±2프레임 [85,80,80,85,95]의 중앙값 85° → −5°.
+    # (단일 프레임 −10°가 아니라 평활값이 기록·판정에 쓰인다)
+    assert record.bottom_femur_elevation == -5.0, record.bottom_femur_elevation
+    assert record.to_dict()["bottom_torso_shin_diff"] == 20.0  # API로도 나간다
+    assert record.to_dict()["bottom_femur_elevation"] == -5.0
+    print("✅ 정상 rep에서도 최저점 상체·정강이·대퇴 측정값이 기록됨")
+
+
+def test_bottom_measurement_matches_issue_value() -> None:
+    """결함 rep에서는 기록된 차이가 Issue의 measured와 같은 값이어야 한다."""
+    analyzer = SquatAnalyzer(fps=30.0)
+    for i, ang in enumerate(CLEAN_REP):
+        analyzer.update(_person_with_lean(ang, 35.0), i)  # 35° → WARNING
+    report = analyzer.finalize()
+
+    issue = next(i for i in report.issues_for_rep(1) if i.code == "torso_lean")
+    assert report.rep_record(1).bottom_torso_shin_diff == issue.measured
+    print("✅ 기록된 측정값과 판정에 쓰인 값이 일치")
+
+
+def test_bottom_measurements_none_when_legs_hidden() -> None:
+    """정강이를 못 보면 지어내지 않고 None으로 남긴다."""
+    analyzer = SquatAnalyzer(fps=30.0)
+    for i, ang in enumerate(CLEAN_REP):
+        person = _person_with_lean(ang, 20.0)
+        person[KP.LEFT_ANKLE] = Keypoint(300.0, 400.0, 0.1)  # 발목 신뢰도 미달
+        person[KP.RIGHT_ANKLE] = Keypoint(0.0, 0.0, 0.0)
+        analyzer.update(person, i)
+    report = analyzer.finalize()
+
+    # 무릎각 자체를 못 재므로 rep이 성립하지 않는다 — 값을 지어낸 기록이 없어야 한다
+    assert report.rep_count == 0
+    assert report.reps == []
+    print("✅ 못 잰 측정값을 지어내지 않음")
+
+
+def test_bottom_femur_smoothing_rejects_spike() -> None:
+    """최저점 부근의 단일 프레임 스파이크가 깊이 판정을 뒤집지 못한다.
+
+    얕은 rep(최저 125° = 거상각 35°, WARNING) 도중 한 프레임만 관절 노이즈로
+    95°(거상각 5°)를 찍는 경우: 단일 프레임 스냅샷이라면 그 스파이크가 최저점이
+    되어 good_depth로 오판하지만, ±2프레임 중앙값은 [42,35,5,35,42]°→35°로
+    스파이크를 걸러 WARNING을 유지한다.
+    """
+    spiky_shallow = [170, 170, 160, 150, 140, 132, 125, 95, 125, 132, 140, 150, 165, 175, 175]
+    analyzer = SquatAnalyzer()
+    for i, ang in enumerate(spiky_shallow):
+        analyzer.update(_upright_person(ang), i)
+    report = analyzer.finalize()
+    assert report.rep_count == 1
+    codes = {i.code for i in report.issues_for_rep(1)}
+    assert "shallow_depth" in codes, f"스파이크가 깊이 판정을 뒤집음: {codes}"
+    assert report.rep_record(1).bottom_femur_elevation == 35.0
+    print("✅ 최저점 스파이크를 ±윈도 중앙값이 걸러냄")
+
+
 # --- 리포트 출력(임계값 노출 + rep별 코칭 문구) --------------------------
 
 def test_issue_carries_threshold() -> None:
     """모든 판정 항목이 자신을 발생시킨 기준선을 measured와 같은 단위로 들고 있다."""
-    assert check_depth(110.0, rep=1).threshold == 90.0    # shallow_depth
-    assert check_depth(135.0, rep=1).threshold == 110.0   # very_shallow_depth
-    assert check_depth(85.0, rep=1).threshold == 90.0     # good_depth
+    assert check_depth_femur(40.0, rep=1).threshold == 30.0   # shallow_depth (거상각)
+    assert check_depth_femur(60.0, rep=1).threshold == 50.0   # very_shallow_depth
+    assert check_depth_femur(0.0, rep=1).threshold == 30.0    # good_depth
+    assert check_depth(110.0, rep=1).threshold == 90.0    # 예비(무릎각) shallow_depth
+    assert check_depth(135.0, rep=1).threshold == 110.0   # 예비 very_shallow_depth
+    assert check_depth(85.0, rep=1).threshold == 90.0     # 예비 good_depth
     # 상체는 두 갈래: 상대 차이(40°)와 절대 상한(70°)이 서로 다른 기준선이다
     assert check_torso(_torso_person(46.0, 5.0), rep=1).threshold == 40.0
     assert check_torso(_torso_person(75.0, None), rep=1).threshold == 70.0
@@ -265,10 +393,14 @@ def test_issue_carries_threshold() -> None:
 
 def test_boundary_uses_displayed_value() -> None:
     """판정은 반올림된 표시값으로 내린다 → '측정값=기준값인데 결함' 모순이 없다."""
-    # 원시 90.04°는 90.0°으로 표시되므로 GOOD, 90.06°은 WARNING이다
+    # 대퇴 거상각: 원시 30.04°는 30.0°으로 표시되므로 GOOD, 30.06°은 WARNING
+    assert check_depth_femur(30.04, rep=1).code == "good_depth"
+    assert check_depth_femur(30.06, rep=1).code == "shallow_depth"
+    assert check_depth_femur(50.04, rep=1).code == "shallow_depth"
+    assert check_depth_femur(50.06, rep=1).code == "very_shallow_depth"
+    # 무릎각 예비 기준도 같은 규칙: 원시 90.04°는 90.0°으로 표시되므로 GOOD
     assert check_depth(90.04, rep=1).code == "good_depth"
     assert check_depth(90.06, rep=1).code == "shallow_depth"
-    # 원시 110.04°는 110.0°으로 표시되므로 ERROR가 아니라 WARNING이어야 한다
     assert check_depth(110.04, rep=1).code == "shallow_depth"
     assert check_depth(110.06, rep=1).code == "very_shallow_depth"
     # 절대 상한도 같은 규칙: 70.04°는 70.0°으로 표시되므로 결함이 아니다
@@ -317,10 +449,15 @@ if __name__ == "__main__":
     test_torso_rule_severe_tier()
     test_torso_hard_cap()
     test_torso_needs_shin_for_relative_tiers()
-    test_depth_tiers()
+    test_depth_femur_tiers()
+    test_depth_knee_fallback_tiers()
     test_verdict_correct_on_clean_squat()
     test_verdict_uses_bottom_frame()
     test_verdict_incorrect_on_very_shallow_rep()
+    test_bottom_measurements_recorded_even_when_correct()
+    test_bottom_measurement_matches_issue_value()
+    test_bottom_measurements_none_when_legs_hidden()
+    test_bottom_femur_smoothing_rejects_spike()
     test_issue_carries_threshold()
     test_boundary_uses_displayed_value()
     test_summary_lines_are_actionable_per_rep()

@@ -8,11 +8,13 @@
 from __future__ import annotations
 
 from ai.analysis.exercises.base import ExerciseAnalyzer
+from ai.analysis.exercises.pushup import PushupAnalyzer
 from ai.analysis.exercises.squat import SquatAnalyzer
 
-# 운동 키 → 분석기 클래스
+# 운동 키 → 분석기 클래스 (키는 백엔드의 exercise_id와 같아야 한다)
 REGISTRY: dict[str, type[ExerciseAnalyzer]] = {
     "squat": SquatAnalyzer,
+    "pushup": PushupAnalyzer,
 }
 
 

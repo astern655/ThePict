@@ -15,6 +15,7 @@ from ai.config import (
     MAX_DETECT_FAILURE_RATIO,
     MIN_PERSON_RATIO,
     OUTPUT_DIR,
+    pose_model_for,
     VIDEO_FPS_FALLBACK,
     VIDEO_FPS_MAX,
     VIDEO_FPS_MIN,
@@ -97,6 +98,8 @@ def analyze_video(
     - save_annotated: True면 관절을 그린 결과 영상을 data/output/에 저장.
     - frame_stride: N이면 N프레임마다 1장만 처리(속도↑, 정확도↓). 1=모든 프레임.
     - detector: 미리 만든 PoseDetector 재사용(서버에서 모델을 한 번만 로드하려고).
+      직접 넘기면 운동별 가중치 선택(pose_model_for)을 건너뛰므로, 호출부가
+      운동에 맞는 모델로 만들어 넘겨야 한다.
 
     반환: Report (report.to_dict() 로 JSON 직렬화 가능)
     """
@@ -104,7 +107,8 @@ def analyze_video(
     if not video_path.exists():
         raise FileNotFoundError(f"영상을 찾을 수 없습니다: {video_path}")
 
-    detector = detector or PoseDetector()
+    # 운동마다 가중치가 다르다(푸시업은 팔꿈치각 노이즈 때문에 s를 쓴다).
+    detector = detector or PoseDetector(pose_model_for(exercise))
     detector.reset()  # 재사용 시 직전 영상의 사람 추적을 초기화
 
     cap = cv2.VideoCapture(str(video_path))

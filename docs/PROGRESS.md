@@ -1,4 +1,4 @@
-# 진행 로드맵 & 체크리스트
+﻿# 진행 로드맵 & 체크리스트
 
 > 개념은 [`ARCHITECTURE.md`](./ARCHITECTURE.md) 참고. 이 문서는 "무엇을 어디까지 했나"를 추적합니다.
 
@@ -40,6 +40,12 @@
 - [ ] 리포트 PDF 내보내기
 
 ## 현재 상태 메모
+- **2026-07-29: 스쿼트 깊이 1차 지표를 무릎각→대퇴 거상각(30°/50°)으로 교체.**
+  근거는 [LLM_FMS_VALIDATION.md](./LLM_FMS_VALIDATION.md) §깊이 지표 교체
+  (LLM-FMS 재현율 55.7%→74.7%, EC3D 교차 검증 `tools/evaluate_ec3d.py`).
+  무릎각 90°/110°는 스냅샷 유실 시 예비. 라벨 검증 판정 일치 14/14 유지.
+  ⚠️ squat_002 부분 반복(라벨 1 / 엔진 0) 불일치가 관측됨 — 깊이 교체와 무관한
+  무릎각 카운트 경로. 원인 미조사.
 - Python 3.14.6 / torch 2.12.1 / ultralytics 8.4.84 설치 확인됨.
 - `yolo11n-pose.pt` 다운로드 완료 → `models/`에 보관.
 - ⚠️ 이 PC에서 `python`은 Store 스텁이라 안 됨 → **`py`** 사용.
@@ -54,6 +60,10 @@ py -m ai.cli <영상경로>          # 실제 영상 분석 → data/output/에 
 ```
 
 ## 다음 액션
-1. 스쿼트 하는 **측면 촬영 영상** 하나를 `data/`에 넣기.
-2. `py -m ai.cli data\내영상.mp4` 실행해 rep 카운트/피드백 확인.
-3. 어긋나면 `ai/config.py`의 임계값 튜닝.
+
+> ⚠️ 위 체크리스트는 M0 시점 기준이라 오래됐다. 백엔드(M2)·앱(M3)은 이미 붙어 있고
+> 실영상 파이프라인도 돌고 있다. 현재 상태는 아래 문서를 본다.
+
+1. **모델 검증의 병목은 영상 데이터다** → [PENDING_VIDEO_WORK.md](./PENDING_VIDEO_WORK.md)
+2. 임계값 근거·미검증 항목 → [SQUAT_TUNING.md](./SQUAT_TUNING.md)
+3. 분포 재측정: `py -m tools.measure_distribution`

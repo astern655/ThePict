@@ -92,6 +92,18 @@ class RepRecord:
     bottom_frame: int       # 가장 깊이 앉은 프레임
     end_frame: int          # 완전히 일어선 프레임
     bottom_angle: float | None = None  # 최저점 관절각(스쿼트면 무릎각)
+    # 최저점의 원시 측정값. 결함일 때만 Issue로 남는 값(상체 앞숙임)은 정상 rep에서
+    # 아무 데도 기록되지 않아 "올바른 스쿼트의 실제 분포"를 볼 수 없었다. 임계값을
+    # 데이터로 재검증하려면 판정과 무관하게 매 rep의 측정값이 남아야 한다.
+    # (docs/SQUAT_TUNING.md §3) 관절이 안 보여 못 잰 경우에만 None.
+    # 운동별로 쓰는 칸이 다르다(스쿼트는 상체·정강이, 푸시업은 몸통 일직선).
+    # 세 번째 운동이 또 다른 지표를 들고 오면 dict 한 칸으로 바꾸는 게 낫다.
+    bottom_femur_elevation: float | None = None  # [스쿼트] 대퇴 거상각(수평 기준, 도) — 깊이 판정 지표
+    bottom_hip_in_span: float | None = None    # [스쿼트] 엉덩이의 무릎~발목 구간 내 위치(측정 전용)
+    bottom_torso_incline: float | None = None  # [스쿼트] 상체 기울기(수직 기준, 도)
+    bottom_shin_incline: float | None = None   # [스쿼트] 정강이 기울기(수직 기준, 도)
+    bottom_torso_shin_diff: float | None = None  # [스쿼트] 상체 − 정강이 (판정 지표)
+    bottom_body_line_dev: float | None = None  # [푸시업] 몸통 일직선 이탈각(도)
     start_sec: float | None = None
     bottom_sec: float | None = None
     end_sec: float | None = None
@@ -106,6 +118,12 @@ class RepRecord:
             "bottom_frame": self.bottom_frame,
             "end_frame": self.end_frame,
             "bottom_angle": self.bottom_angle,
+            "bottom_femur_elevation": self.bottom_femur_elevation,
+            "bottom_hip_in_span": self.bottom_hip_in_span,
+            "bottom_torso_incline": self.bottom_torso_incline,
+            "bottom_shin_incline": self.bottom_shin_incline,
+            "bottom_torso_shin_diff": self.bottom_torso_shin_diff,
+            "bottom_body_line_dev": self.bottom_body_line_dev,
             "start_sec": self.start_sec,
             "bottom_sec": self.bottom_sec,
             "end_sec": self.end_sec,

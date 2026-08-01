@@ -121,6 +121,56 @@ def test_bad_timing_caught() -> None:
     print("✅ 구간 시각 오류(순서·겹침)를 잡아냄")
 
 
+# --- 운동별 스키마 -------------------------------------------------------
+
+def test_pushup_codes_derive_labels() -> None:
+    """푸시업도 코드에서 판정이 파생된다(깊이 코드는 스쿼트와 공유)."""
+    assert derive_label(set(), "pushup") == "correct"
+    assert derive_label({"body_line_break"}, "pushup") == "needs_work"
+    assert derive_label({"excessive_body_line_break"}, "pushup") == "incorrect"
+    assert derive_label({"shallow_depth", "body_line_break"}, "pushup") == "needs_work"
+    assert derive_label({"body_line_break", "very_shallow_depth"}, "pushup") == "incorrect"
+    print("✅ 푸시업 코드 → 판정 파생 규칙")
+
+
+def test_cross_exercise_codes_rejected() -> None:
+    """다른 운동의 코드를 섞어 적으면 잡아야 한다.
+
+    깊이 코드는 공유하지만 두 번째 축은 운동마다 다르다. 이걸 안 막으면
+    스쿼트 라벨을 푸시업으로 채점해도 조용히 '결함 없음'으로 통과한다.
+    """
+    rep = _label_rep(1, 1.0, 3.0, ["torso_lean"])          # 스쿼트 코드
+    problems = check_label_file([_entry([rep])], "pushup")  # 푸시업으로 검사
+    assert any("알 수 없는 코드" in p for p in problems), problems
+
+    rep = _label_rep(1, 1.0, 3.0, ["body_line_break"])      # 푸시업 코드
+    problems = check_label_file([_entry([rep])], "squat")   # 스쿼트로 검사
+    assert any("알 수 없는 코드" in p for p in problems), problems
+    print("✅ 다른 운동의 결함 코드를 잡아냄")
+
+
+def test_declared_exercise_mismatch_caught() -> None:
+    """라벨 파일에 적힌 운동과 검사 중인 운동이 다르면 잡아야 한다."""
+    entry = _entry([_label_rep(1, 1.0, 3.0)], exercise="squat")
+    problems = check_label_file([entry], "pushup")
+    assert any("exercise" in p for p in problems), problems
+    # 같으면 통과
+    assert check_label_file([_entry([_label_rep(1, 1.0, 3.0)], exercise="squat")], "squat") == []
+    print("✅ 라벨 파일의 운동 표기와 검사 대상 불일치를 잡아냄")
+
+
+def test_pushup_axis_duplicate_rejected() -> None:
+    """몸통 축 코드를 두 개 적으면 잡아야 한다(한 rep의 몸통 판정은 하나)."""
+    rep = {
+        "rep_index": 1, "start_sec": 1.0, "bottom_sec": 2.0, "end_sec": 3.0,
+        "label": "incorrect",
+        "feedback_codes": ["body_line_break", "excessive_body_line_break"],
+    }
+    problems = check_label_file([_entry([rep])], "pushup")
+    assert any("축의 코드" in p for p in problems), problems
+    print("✅ 푸시업 몸통 축 코드 중복을 잡아냄")
+
+
 # --- rep 매칭 ------------------------------------------------------------
 
 def test_match_by_time_when_counts_equal() -> None:
@@ -173,6 +223,10 @@ if __name__ == "__main__":
     test_unknown_code_rejected()
     test_rep_count_mismatch_in_label_file()
     test_bad_timing_caught()
+    test_pushup_codes_derive_labels()
+    test_cross_exercise_codes_rejected()
+    test_declared_exercise_mismatch_caught()
+    test_pushup_axis_duplicate_rejected()
     test_match_by_time_when_counts_equal()
     test_missed_rep_detected()
     test_spurious_rep_detected()

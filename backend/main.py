@@ -75,9 +75,18 @@ EXERCISES = [
         "name": "푸시업",
         "target": "가슴, 어깨, 삼두",
         "difficulty": "beginner",
-        "steps": [],
-        "cautions": [],
-        "supported": False,
+        "steps": [
+            "손을 어깨너비보다 약간 넓게 바닥에 짚는다",
+            "머리-엉덩이-발목이 한 직선이 되도록 몸을 곧게 만든다",
+            "팔꿈치를 굽혀 가슴이 바닥에 가까워질 때까지 내려간다",
+            "바닥을 밀어내며 팔을 완전히 펴고 올라온다",
+        ],
+        "cautions": [
+            "엉덩이가 아래로 처지거나 위로 솟지 않게 한다",
+            "목을 꺾어 고개를 들지 않는다",
+            "팔을 다 펴지 않고 반만 올라오지 않는다",
+        ],
+        "supported": True,
     },
 ]
 for e in EXERCISES:
@@ -479,7 +488,7 @@ async def inference_video(
 
     # annotated_video_path는 서버 로컬 경로다. 클라이언트에 흘리지 않는다.
     report.pop("annotated_video_path", None)
-    return {"report": report, "set": video_analysis.to_set(report)}
+    return {"report": report, "set": video_analysis.to_set(report, exercise_id)}
 
 
 # ---- 운동 프로그램 (세트/휴식) ----

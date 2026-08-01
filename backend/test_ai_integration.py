@@ -52,13 +52,44 @@ def test_rules_match_ai_engine_thresholds():
     assert rules["squat_depth_max"] == config.SQUAT_GOOD_DEPTH_ANGLE
     assert rules["torso_shin_diff_max"] == config.SQUAT_TORSO_SHIN_DIFF_WARN
 
+    pushup = pose_eval.RULES["pushup"]
+    assert pushup["pushup_depth_max"] == config.PUSHUP_GOOD_DEPTH_ANGLE
+    assert pushup["body_line_dev_max"] == config.PUSHUP_BODY_LINE_WARN
+
 
 def test_video_checks_have_analysis_metadata():
-    """video_analysis가 내는 check 이름을 analysis.py가 문장으로 바꿀 수 있어야 한다."""
-    for name in (video_analysis.DEPTH_CHECK, video_analysis.TORSO_CHECK):
-        assert name in analysis.CHECK_META
-        _, hi_key = analysis.CHECK_META[name]["range"]
-        assert hi_key in pose_eval.RULES["squat"]
+    """video_analysis가 내는 check 이름을 analysis.py가 문장으로 바꿀 수 있어야 한다.
+
+    이름·범위 키·RULES가 운동별로 다 이어져 있어야 리포트가 문장이 된다.
+    하나라도 빠지면 사용자에게 항목이 조용히 사라진다.
+    """
+    for exercise_id, spec in video_analysis.EXERCISE_CHECKS.items():
+        for name in (spec["depth_check"], spec["form_check"]):
+            assert name in analysis.CHECK_META, (exercise_id, name)
+            _, hi_key = analysis.CHECK_META[name]["range"]
+            assert hi_key in pose_eval.RULES[exercise_id], (exercise_id, hi_key)
+
+
+def test_supported_exercises_match_engine_registry():
+    """백엔드가 supported=True로 광고하는 운동 = 엔진이 실제로 분석하는 운동."""
+    advertised = {e["id"] for e in main.EXERCISES if e["supported"]}
+    assert advertised == video_analysis.SUPPORTED_EXERCISES
+
+    try:
+        engine = ai_bridge.load_engine()
+    except ai_bridge.EngineUnavailable:
+        pytest.skip("ai 패키지 없음")
+    from ai.analysis.exercises import available_exercises
+
+    assert video_analysis.SUPPORTED_EXERCISES == set(available_exercises())
+    assert engine is not None
+
+
+def test_pushup_has_no_frame_level_evaluation():
+    """/inference/pose(프레임 단위)는 스쿼트 전용이다. 푸시업엔 지어내지 않는다."""
+    result = pose_eval.evaluate([], "pushup")
+    assert result["verdict"] == "unsupported"
+    assert result["checks"] == []
 
 
 # ---- 리포트 → 세트 변환 --------------------------------------------------

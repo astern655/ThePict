@@ -36,10 +36,10 @@
       {
         "rep_index": 1,
         "start_sec": 0.2,
-        "bottom_sec": 1.1,
+        "bottom_sec": 1.7,
         "end_sec": 2.6,
-        "label": "",
-        "feedback_codes": [""]
+        "label": "correct",
+        "feedback_codes": []
       },
       {
         "rep_index": 2,

@@ -53,12 +53,14 @@ def test_exercises_seed_no_auth_needed():
     assert r.status_code == 200
     data = r.json()
     ids = {e["id"]: e for e in data}
+    # AI 엔진이 분석하는 운동만 supported=True (ai/analysis/exercises/REGISTRY와 일치)
     assert ids["squat"]["supported"] is True
     assert len(ids["squat"]["steps"]) > 0
+    assert ids["pushup"]["supported"] is True
+    assert len(ids["pushup"]["steps"]) > 0
     assert ids["deadlift"]["supported"] is False
     assert ids["bench_press"]["supported"] is False
     assert ids["lunge"]["supported"] is False
-    assert ids["pushup"]["supported"] is False
 
 
 def test_full_flow_profile_sessions_calendar_compare_and_isolation():

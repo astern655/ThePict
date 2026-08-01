@@ -1,0 +1,155 @@
+[
+  {
+    "id": "correct_full_pushup",
+    "label": "correct",
+    "notes": "가슴이 바닥에 가까울 만큼 내려가고 몸통이 일직선인 1회 반복",
+    "frames": [
+      {"elbow_angle": 175, "hip_dev": 0},
+      {"elbow_angle": 175, "hip_dev": 0},
+      {"elbow_angle": 165, "hip_dev": 0},
+      {"elbow_angle": 150, "hip_dev": 0},
+      {"elbow_angle": 130, "hip_dev": 0},
+      {"elbow_angle": 110, "hip_dev": 0},
+      {"elbow_angle": 95, "hip_dev": 0},
+      {"elbow_angle": 85, "hip_dev": 0},
+      {"elbow_angle": 80, "hip_dev": 0},
+      {"elbow_angle": 80, "hip_dev": 0},
+      {"elbow_angle": 85, "hip_dev": 0},
+      {"elbow_angle": 95, "hip_dev": 0},
+      {"elbow_angle": 115, "hip_dev": 0},
+      {"elbow_angle": 135, "hip_dev": 0},
+      {"elbow_angle": 155, "hip_dev": 0},
+      {"elbow_angle": 170, "hip_dev": 0},
+      {"elbow_angle": 175, "hip_dev": 0}
+    ],
+    "expected_rep_count": 1,
+    "expected_partial_rep_count": 0,
+    "expected_reps": [
+      {"rep_index": 1, "verdict": "correct", "feedback_codes": []}
+    ]
+  },
+  {
+    "id": "shallow_pushup",
+    "label": "needs_work",
+    "notes": "반만 내려가 최저 팔꿈치각이 100도에 머무름 (깊이 WARNING)",
+    "frames": [
+      {"elbow_angle": 175, "hip_dev": 0},
+      {"elbow_angle": 175, "hip_dev": 0},
+      {"elbow_angle": 165, "hip_dev": 0},
+      {"elbow_angle": 150, "hip_dev": 0},
+      {"elbow_angle": 135, "hip_dev": 0},
+      {"elbow_angle": 120, "hip_dev": 0},
+      {"elbow_angle": 105, "hip_dev": 0},
+      {"elbow_angle": 100, "hip_dev": 0},
+      {"elbow_angle": 100, "hip_dev": 0},
+      {"elbow_angle": 105, "hip_dev": 0},
+      {"elbow_angle": 120, "hip_dev": 0},
+      {"elbow_angle": 140, "hip_dev": 0},
+      {"elbow_angle": 160, "hip_dev": 0},
+      {"elbow_angle": 175, "hip_dev": 0},
+      {"elbow_angle": 175, "hip_dev": 0}
+    ],
+    "expected_rep_count": 1,
+    "expected_partial_rep_count": 0,
+    "expected_reps": [
+      {"rep_index": 1, "verdict": "needs_work", "feedback_codes": ["shallow_depth"]}
+    ]
+  },
+  {
+    "id": "hip_sag_pushup",
+    "label": "needs_work",
+    "notes": "깊이는 충분한데 최저점에서 엉덩이가 20도만큼 처짐 (몸통 WARNING)",
+    "frames": [
+      {"elbow_angle": 175, "hip_dev": 0},
+      {"elbow_angle": 175, "hip_dev": 0},
+      {"elbow_angle": 165, "hip_dev": 5},
+      {"elbow_angle": 150, "hip_dev": 10},
+      {"elbow_angle": 130, "hip_dev": 14},
+      {"elbow_angle": 110, "hip_dev": 18},
+      {"elbow_angle": 95, "hip_dev": 20},
+      {"elbow_angle": 85, "hip_dev": 20},
+      {"elbow_angle": 80, "hip_dev": 20},
+      {"elbow_angle": 80, "hip_dev": 20},
+      {"elbow_angle": 85, "hip_dev": 20},
+      {"elbow_angle": 95, "hip_dev": 18},
+      {"elbow_angle": 115, "hip_dev": 12},
+      {"elbow_angle": 135, "hip_dev": 6},
+      {"elbow_angle": 155, "hip_dev": 0},
+      {"elbow_angle": 170, "hip_dev": 0},
+      {"elbow_angle": 175, "hip_dev": 0}
+    ],
+    "expected_rep_count": 1,
+    "expected_partial_rep_count": 0,
+    "expected_reps": [
+      {"rep_index": 1, "verdict": "needs_work", "feedback_codes": ["body_line_break"]}
+    ]
+  },
+  {
+    "id": "pike_and_shallow_pushup",
+    "label": "incorrect",
+    "notes": "엉덩이를 30도 솟구쳐 든 채 거의 안 내려감 (깊이 ERROR + 몸통 ERROR)",
+    "frames": [
+      {"elbow_angle": 175, "hip_dev": -30},
+      {"elbow_angle": 175, "hip_dev": -30},
+      {"elbow_angle": 165, "hip_dev": -30},
+      {"elbow_angle": 150, "hip_dev": -30},
+      {"elbow_angle": 135, "hip_dev": -30},
+      {"elbow_angle": 125, "hip_dev": -30},
+      {"elbow_angle": 125, "hip_dev": -30},
+      {"elbow_angle": 135, "hip_dev": -30},
+      {"elbow_angle": 150, "hip_dev": -30},
+      {"elbow_angle": 165, "hip_dev": -30},
+      {"elbow_angle": 175, "hip_dev": -30},
+      {"elbow_angle": 175, "hip_dev": -30}
+    ],
+    "expected_rep_count": 1,
+    "expected_partial_rep_count": 0,
+    "expected_reps": [
+      {
+        "rep_index": 1,
+        "verdict": "incorrect",
+        "feedback_codes": ["very_shallow_depth", "excessive_body_line_break"]
+      }
+    ]
+  },
+  {
+    "id": "shallow_dip_counted_but_flagged",
+    "label": "incorrect",
+    "notes": "팔꿈치를 140도까지만 굽혔다 폄 — 반복으로는 세되 깊이 ERROR (반복 기준은 영상별 보정, 깊이 기준은 절대값)",
+    "frames": [
+      {"elbow_angle": 175, "hip_dev": 0},
+      {"elbow_angle": 175, "hip_dev": 0},
+      {"elbow_angle": 165, "hip_dev": 0},
+      {"elbow_angle": 155, "hip_dev": 0},
+      {"elbow_angle": 142, "hip_dev": 0},
+      {"elbow_angle": 140, "hip_dev": 0},
+      {"elbow_angle": 142, "hip_dev": 0},
+      {"elbow_angle": 155, "hip_dev": 0},
+      {"elbow_angle": 168, "hip_dev": 0},
+      {"elbow_angle": 175, "hip_dev": 0}
+    ],
+    "expected_rep_count": 1,
+    "expected_partial_rep_count": 0,
+    "expected_reps": [
+      {"rep_index": 1, "verdict": "incorrect", "feedback_codes": ["very_shallow_depth"]}
+    ]
+  },
+  {
+    "id": "no_movement_not_counted",
+    "label": "correct",
+    "notes": "플랭크로 버티기만 함 — 각도 변화 폭이 좁아 보정하지 않고 0회",
+    "frames": [
+      {"elbow_angle": 175, "hip_dev": 0},
+      {"elbow_angle": 172, "hip_dev": 0},
+      {"elbow_angle": 174, "hip_dev": 0},
+      {"elbow_angle": 169, "hip_dev": 0},
+      {"elbow_angle": 173, "hip_dev": 0},
+      {"elbow_angle": 170, "hip_dev": 0},
+      {"elbow_angle": 175, "hip_dev": 0},
+      {"elbow_angle": 171, "hip_dev": 0}
+    ],
+    "expected_rep_count": 0,
+    "expected_partial_rep_count": 0,
+    "expected_reps": []
+  }
+]

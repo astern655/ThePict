@@ -489,10 +489,13 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                 // 자세를 실제로 재는 유일한 경로. 실시간 카메라가 없으므로
                 // 영상을 올려야 AI 엔진(YOLO)이 반복과 자세를 판정한다.
                 const SizedBox(height: 10),
-                const Text(
+                Text(
                   '실시간 카메라는 아직 연결되지 않았어요. 아래 버튼으로 운동 영상을 올리면 '
-                  'AI가 반복 횟수와 회차별 자세를 실제로 판정합니다. 스쿼트는 옆에서 찍어 주세요.',
-                  style: TextStyle(
+                  'AI가 반복 횟수와 회차별 자세를 실제로 판정합니다. '
+                  // 측면 촬영 전제는 운동마다 같지만, 어떤 운동인지 짚어 줘야
+                  // 사용자가 자기 상황으로 읽는다(엔진도 측면 영상만 정확히 잰다).
+                  '${widget.exercise['name'] as String? ?? '이 운동'}은 옆에서 찍어 주세요.',
+                  style: const TextStyle(
                       color: AppDark.foregroundMuted, fontSize: 13, height: 1.45),
                 ),
                 const SizedBox(height: 12),

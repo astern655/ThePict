@@ -32,9 +32,17 @@ def angle_at(a: Point, b: Point, c: Point) -> float:
 
 
 def torso_incline(shoulder: Point, hip: Point) -> float:
-    """상체가 수직선에서 얼마나 기울었는지(도). 0=완전 수직, 클수록 앞으로 숙임."""
+    """상체가 수직선에서 얼마나 기울었는지(도). 0=완전 수직, 클수록 앞으로 숙임.
+
+    두 점이 겹치면 방향이 정의되지 않으므로 NaN을 반환한다(angle_at과 같은 규약).
+    이걸 0으로 두면 '완벽히 곧은 상체', atan2(0,-0)의 결과인 180°를 그대로 쓰면
+    '완전히 접힌 상체'가 되어 **둘 다 지어낸 값**이 된다. 호출부(landmarks)가
+    NaN을 '못 잰 것'으로 걸러 낸다.
+    """
     dx = shoulder[0] - hip[0]
     dy = shoulder[1] - hip[1]
+    if math.hypot(dx, dy) == 0:
+        return float("nan")
     # 화면 y축은 아래로 갈수록 커진다. 수직 기준각을 잡는다.
     return abs(math.degrees(math.atan2(dx, -dy)))
 

@@ -27,14 +27,17 @@ import cv2
 import numpy as np
 
 from ai.analysis.exercises.squat import (
+    _FEMURS,
     _mid_knee_angle,
     _shin_incline,
     _torso_lean,
     check_depth,
+    check_depth_femur,
     check_torso,
 )
+from ai.analysis.landmarks import mean_femur_elevation
 from ai.config import (
-    SQUAT_GOOD_DEPTH_ANGLE,
+    SQUAT_FEMUR_ELEVATION_WARN,
     SQUAT_TORSO_LEAN_HARD_MAX,
     SQUAT_TORSO_SHIN_DIFF_WARN,
 )
@@ -59,6 +62,7 @@ class Sample:
     trunk_answer: str
     detected: bool
     knee_angle: float | None = None
+    femur_elevation: float | None = None  # 대퇴 거상각(도) — 현재 깊이 1차 지표
     torso_incline: float | None = None
     shin_incline: float | None = None
     torso_shin_diff: float | None = None
@@ -116,6 +120,7 @@ def load_sample(label_path: Path, image_dir: Path, detector: PoseDetector) -> Sa
         return sample
 
     knee = _mid_knee_angle(person)
+    femur = mean_femur_elevation(person, _FEMURS)
     torso = _torso_lean(person)
     shin = _shin_incline(person)
     diff = None if torso is None or shin is None else torso - shin
@@ -147,13 +152,19 @@ def load_sample(label_path: Path, image_dir: Path, detector: PoseDetector) -> Sa
 
     sample.detected = True
     sample.knee_angle = _safe_round(knee)
+    sample.femur_elevation = _safe_round(femur)
     sample.torso_incline = _safe_round(torso)
     sample.shin_incline = _safe_round(shin)
     sample.torso_shin_diff = _safe_round(diff)
     sample.hip_knee_vertical_offset = _safe_round(hip_knee_offset)
     sample.hip_knee_vertical_ratio = _safe_round(hip_knee_ratio)
 
-    if knee is not None and math.isfinite(knee):
+    # 프로덕션 판정 경로 그대로: 대퇴 거상각 1차, 못 재면 무릎각 예비.
+    if femur is not None and math.isfinite(femur):
+        depth = check_depth_femur(femur, rep=1)
+        sample.predicted_depth_code = depth.code
+        sample.predicted_depth_issue = depth.code != "good_depth"
+    elif knee is not None and math.isfinite(knee):
         depth = check_depth(knee, rep=1)
         sample.predicted_depth_code = depth.code
         sample.predicted_depth_issue = depth.code != "good_depth"
@@ -256,20 +267,23 @@ def current_metrics(samples: list[Sample], task: str) -> dict[str, float | int]:
 
 
 def conservative_depth_candidates(samples: list[Sample]) -> dict:
-    """과적합을 줄이기 위해 사전에 고정한 5° 격자 후보를 모두 보고한다."""
-    rows = [row for row in samples if row.knee_angle is not None]
+    """과적합을 줄이기 위해 사전에 고정한 5° 격자 후보를 모두 보고한다.
+
+    지표는 현재 깊이 1차 지표인 대퇴 거상각. (무릎각 시절 격자는 80~100°였다)
+    """
+    rows = [row for row in samples if row.femur_elevation is not None]
     result = {}
-    for threshold in (80.0, 85.0, 90.0, 95.0, 100.0):
+    for threshold in (20.0, 25.0, 30.0, 35.0, 40.0):
         overall = confusion(
             (row.truth_depth_issue for row in rows),
-            (bool(round(row.knee_angle, 1) > threshold) for row in rows),
+            (bool(round(row.femur_elevation, 1) > threshold) for row in rows),
         )
         per_action = {}
         for action in DEFAULT_ACTIONS:
             action_rows = [row for row in rows if row.action == action]
             per_action[action] = confusion(
                 (row.truth_depth_issue for row in action_rows),
-                (bool(round(row.knee_angle, 1) > threshold) for row in action_rows),
+                (bool(round(row.femur_elevation, 1) > threshold) for row in action_rows),
             )
         result[str(int(threshold))] = {
             "overall": overall,
@@ -324,9 +338,9 @@ def threshold_analysis(samples: list[Sample], task: str) -> dict:
     if task == "depth":
         return _threshold_report(
             rows,
-            value=lambda row: row.knee_angle,
+            value=lambda row: row.femur_elevation,
             truth=lambda row: row.truth_depth_issue,
-            current=SQUAT_GOOD_DEPTH_ANGLE,
+            current=SQUAT_FEMUR_ELEVATION_WARN,
         )
     return _threshold_report(
         rows,

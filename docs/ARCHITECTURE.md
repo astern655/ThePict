@@ -142,7 +142,13 @@ cosθ = (BA · BC) / (|BA| × |BC|)
 이 판정은 `Report.rep_verdicts()`로 나오고 `to_dict()`에 함께 실려 API가 그대로 내려줄 수 있습니다.
 
 이 규칙들은 `analysis/exercises/squat.py`에 순수 함수(`check_depth`, `check_torso`)로 모여 있어
-단위 테스트가 쉽고, **운동마다 파일 하나씩** 추가하면 확장됩니다. 임계값은 `ai/config.py`에 모여
+단위 테스트가 쉽고, **운동마다 파일 하나씩** 추가하면 확장됩니다.
+
+> **두 번째 운동(푸시업)이 붙은 방식**: 반복 카운트 상태기계·최저점 스냅샷·유실 구간
+> 대응·측면 촬영 검증은 운동과 무관하게 같아서 `base.AngleRepAnalyzer`에 한 벌만 둡니다.
+> 운동별 파일은 "어떤 관절각을 재는가(`measure_angle`) / 무엇을 결함으로 보는가
+> (`check_form`)"만 채웁니다. 푸시업은 팔꿈치각 + 몸통 일직선입니다
+> ([PUSHUP_CRITERIA.md](./PUSHUP_CRITERIA.md)). 임계값은 `ai/config.py`에 모여
 있습니다. (정면 전용 규칙인 무릎 모임·비대칭은 정면 촬영을 도입할 때 추가할 수 있습니다.)
 
 ---
@@ -162,12 +168,14 @@ thepict/
 │   │   └── detector.py        #   YOLO 모델 래퍼 (프레임 → 관절좌표)
 │   │
 │   ├── analysis/              # ②③ 측정·판단 담당
-│   │   ├── geometry.py        #   각도 계산 등 순수 수학 함수
+│   │   ├── geometry.py        #   각도 계산 등 순수 수학 함수(점 → 숫자)
+│   │   ├── landmarks.py       #   관절 스냅샷 측정 헬퍼(보이는 쪽만/좌우 평균)
 │   │   ├── feedback.py        #   Issue/Report 데이터 구조 (+to_dict)
 │   │   └── exercises/
 │   │       ├── __init__.py    #   운동 레지스트리 (create_analyzer)
-│   │       ├── base.py        #   모든 운동이 공유하는 분석기 뼈대
-│   │       └── squat.py       #   스쿼트 전용 규칙 + rep 카운트
+│   │       ├── base.py        #   상태기계·유실 대응·측면 검증 공통 뼈대
+│   │       ├── squat.py       #   스쿼트 규칙 (무릎각 + 상체 앞숙임)
+│   │       └── pushup.py      #   푸시업 규칙 (팔꿈치각 + 몸통 일직선)
 │   │
 │   └── video/                 # 입출력 담당
 │       └── annotator.py       #   프레임에 관절·뼈대 그리기
