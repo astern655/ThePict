@@ -182,94 +182,155 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('프로필'),
-        actions: [
-          IconButton(tooltip: '로그아웃', icon: const Icon(Icons.logout), onPressed: _logout)
-        ],
-      ),
-      body: FutureBuilder<Map<String, dynamic>>(
-        future: _profileFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: ErrorCard(
-                  message: '불러오기 실패: ${snapshot.error}',
-                  onRetry: () => setState(() => _profileFuture = _loadProfile()),
-                ),
-              ),
-            );
-          }
-          return ListView(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-            children: [
-              _hero(),
-              const SizedBox(height: 12),
-              _statsSection(),
-              const SizedBox(height: 12),
-              _programEntryCard(),
-              const SizedBox(height: 12),
-              _bmiCard(),
-              const SizedBox(height: 12),
-              _formCard(),
-              const SizedBox(height: 14),
-              PressScale(
-                child: FilledButton(
-                  onPressed: _saving ? null : _save,
-                  child: _saving
-                      ? const SizedBox(
-                          height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Text('저장'),
-                ),
-              ),
-              const SizedBox(height: 24),
-              _dangerCard(),
-            ],
-          );
-        },
+    // 시안 프로필: 큰 제목 "프로필"(34px) + 오른쪽 원형 로그아웃 버튼을 상단에 인라인으로 둔다
+    // (접히는 라지 타이틀 대신 — 시안엔 접힘 바가 없다). 그 아래로 계정 히어로·통계·설정·
+    // 신체 정보가 스크롤된다.
+    return GradientBackground(
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: SafeArea(
+          bottom: false,
+          child: FutureBuilder<Map<String, dynamic>>(
+            future: _profileFuture,
+            builder: (context, snapshot) {
+              return CustomScrollView(
+                slivers: [
+                  SliverToBoxAdapter(child: _header()),
+                  _bodySliver(snapshot),
+                ],
+              );
+            },
+          ),
+        ),
       ),
     );
   }
 
-  /// 히어로 — 고추장 솔리드. 화면 최상단을 가장 진한 면으로 눌러 위계를 만든다.
+  /// 시안 상단 헤더 — "프로필" 제목 + 오른쪽 원형 로그아웃 버튼(rgba(28,43,46,.06)).
+  Widget _header() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 12, 14),
+      child: Row(
+        children: [
+          const Expanded(
+            child: Text(
+              '프로필',
+              style: TextStyle(
+                fontSize: 34,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.5,
+                color: AppColors.foreground,
+              ),
+            ),
+          ),
+          IconButton(
+            onPressed: _logout,
+            tooltip: '로그아웃',
+            iconSize: 20,
+            style: IconButton.styleFrom(
+              backgroundColor: AppColors.foreground.withValues(alpha: 0.06),
+              foregroundColor: AppColors.foreground,
+              minimumSize: const Size(44, 44),
+              shape: const CircleBorder(),
+            ),
+            icon: const Icon(Icons.logout),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _bodySliver(AsyncSnapshot<Map<String, dynamic>> snapshot) {
+    if (snapshot.connectionState != ConnectionState.done) {
+      return const SliverFillRemaining(
+        hasScrollBody: false,
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (snapshot.hasError) {
+      return SliverFillRemaining(
+        hasScrollBody: false,
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: ErrorCard(
+              message: '불러오기 실패: ${snapshot.error}',
+              onRetry: () => setState(() => _profileFuture = _loadProfile()),
+            ),
+          ),
+        ),
+      );
+    }
+    return SliverPadding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
+      sliver: SliverList.list(
+        children: [
+          _hero(),
+          const SizedBox(height: 12),
+          _statsSection(),
+          const SizedBox(height: 12),
+          _programEntryCard(),
+          const SizedBox(height: 12),
+          _bmiCard(),
+          const SizedBox(height: 12),
+          _formCard(),
+          const SizedBox(height: 14),
+          GradientButton(
+            onPressed: _saving ? null : _save,
+            // 밝은 브랜드 채움 위 스피너/텍스트 = 어두운 잉크(GradientButton 기본 상속과 동일 톤).
+            child: _saving
+                ? const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: AppColors.foreground))
+                : const Text('저장'),
+          ),
+          const SizedBox(height: 24),
+          _dangerCard(),
+        ],
+      ),
+    );
+  }
+
+  /// 히어로 — 프로스티드 글라스. 화면 최상단 포컬. 아바타는 솔리드 코랄(coral_mid) 원형,
+  /// 그 위 아이콘은 어두운 잉크(밝은 코랄 채움 위 흰색 FAIL 규칙). 텍스트는 글라스 위 ink.
   Widget _hero() {
-    const style = AppBlocks.gochujang;
-    return BlockCard(
-      style: style,
+    return GlassCard(
       padding: const EdgeInsets.all(20),
+      semanticLabel: '내 계정 ${_email ?? '이메일 없음'}',
       child: Row(
         children: [
           Container(
             width: 52,
             height: 52,
-            // raw hex 대신 토큰으로 — 값은 같지만 팔레트가 바뀔 때 같이 따라간다.
-            // BlockStyle 필드 접근은 const 평가가 안 되므로 const를 뗀다.
-            decoration: const BoxDecoration(
-              color: AppColors.onPrimary,
+            decoration: BoxDecoration(
+              color: AppBlocks.gochujang.background, // coral_mid 솔리드 (산호↔청록 그라데이션 제거)
               shape: BoxShape.circle,
             ),
-            child: const Icon(Icons.person, color: AppColors.primary, size: 28),
+            // 밝은 코랄 채움 위 아이콘 = 어두운 잉크 (coral_mid 위 4.87:1 AA).
+            child: const Icon(Icons.person, color: AppColors.foreground, size: 28),
           ),
           const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('내 계정',
-                    style:
-                        TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: style.mutedOr)),
+                const Text('내 계정',
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.foregroundMuted)),
                 const SizedBox(height: 4),
                 Text(
                   _email ?? '이메일 없음',
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, height: 1.25),
+                  style: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w800,
+                      height: 1.25,
+                      color: AppColors.foreground),
                 ),
               ],
             ),
@@ -301,47 +362,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
           );
         } else {
           final s = snap.data!;
-          body = Column(
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: StatPill(
-                      style: AppBlocks.navy,
-                      value: _compact(s.totalReps),
-                      unit: '렙',
-                      label: '누적 렙 수',
-                      icon: Icons.fitness_center_rounded,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: StatPill(
-                      style: AppBlocks.crimson,
-                      value: '${s.activeDays}',
-                      unit: '일',
-                      label: '총 운동일',
-                      icon: Icons.event_available_rounded,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: StatPill(
-                      style: AppBlocks.gochujang,
-                      value: s.avgForm == null ? '–' : '${s.avgForm!.round()}',
-                      unit: s.avgForm == null ? null : '점',
-                      label: '평균 폼 점수',
-                      icon: Icons.speed_rounded,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: StreakBadge(days: s.streak, style: AppBlocks.tintCrimson),
-              ),
-            ],
+          // 히어로 글라스 한 장에 3지표를 묶는다 — 필마다 글라스를 깔지 않는다(BackdropFilter 1개).
+          // 3연 보조 지표라 숫자는 잉크(style.foreground)로 조용히 — 코랄은 화면당 하나의 히어로에만.
+          body = GlassCard(
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+            semanticLabel: '운동 통계. 누적 렙 ${_compact(s.totalReps)}, '
+                '총 운동일 ${s.activeDays}일, '
+                '평균 폼 점수 ${s.avgForm == null ? '없음' : '${s.avgForm!.round()}점'}, '
+                '연속 ${s.streak}일',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: _glassStat(_compact(s.totalReps), '렙', '누적 렙 수')),
+                    const SizedBox(width: 12),
+                    Expanded(child: _glassStat('${s.activeDays}', '일', '총 운동일')),
+                    const SizedBox(width: 12),
+                    Expanded(child: _glassStat(
+                        s.avgForm == null ? '–' : '${s.avgForm!.round()}',
+                        s.avgForm == null ? null : '점',
+                        '평균 폼 점수')),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: StreakBadge(days: s.streak, style: AppBlocks.tintCrimson),
+                ),
+              ],
+            ),
           );
         }
 
@@ -357,6 +408,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ],
         );
       },
+    );
+  }
+
+  /// 글라스 히어로 안의 지표 한 칸 — 숫자·단위·캡션 모두 ink 계열(글라스 위 검증된 톤).
+  /// [AppBlocks.cream]을 style로 쓰는 이유: 그 foreground(ink 13.8:1)·muted가 밝은 글라스면
+  /// 위에서 검증된 값이다. 3연 보조 지표라 코랄을 넘기지 않고 잉크로 조용히 둔다.
+  Widget _glassStat(String value, String? unit, String label) {
+    return BigStat(
+      style: AppBlocks.cream,
+      value: value,
+      unit: unit,
+      caption: label,
+      size: 30,
     );
   }
 
@@ -444,70 +508,156 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  /// 신체 정보 — iOS 인셋 그룹 리스트. 라벨 왼쪽 / 값 오른쪽 정렬, 행 사이 헤어라인.
+  /// (Material 아웃라인 폼 필드 대신 — 시안은 흰 카드 안 오른쪽 정렬 입력 행이다.)
   Widget _formCard() {
     return BlockCard(
       style: AppBlocks.cream,
       outlined: true, // 크림 scaffold 위 1.07:1 — 폼 카드 경계를 살린다
-      padding: const EdgeInsets.all(18),
+      padding: EdgeInsets.zero,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('신체 정보', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 14),
-          DropdownButtonFormField<String>(
-            initialValue: _gender,
-            decoration: const InputDecoration(labelText: '성별', border: OutlineInputBorder()),
-            items: const [
-              DropdownMenuItem(value: 'male', child: Text('남성')),
-              DropdownMenuItem(value: 'female', child: Text('여성')),
-              DropdownMenuItem(value: 'other', child: Text('기타')),
-            ],
-            onChanged: (v) => setState(() => _gender = v ?? 'male'),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(18, 14, 18, 6),
+            child: Text('신체 정보',
+                style: TextStyle(
+                    fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.foreground)),
           ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _ageCtrl,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(labelText: '나이', border: OutlineInputBorder()),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _heightCtrl,
-            keyboardType: TextInputType.number,
-            // BMI 카드를 실시간으로 갱신하기 위한 재빌드.
-            onChanged: (_) => setState(() {}),
-            decoration: const InputDecoration(labelText: '키 (cm)', border: OutlineInputBorder()),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _weightCtrl,
-            keyboardType: TextInputType.number,
-            onChanged: (_) => setState(() {}),
-            decoration: const InputDecoration(labelText: '몸무게 (kg)', border: OutlineInputBorder()),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _goalCtrl,
-            decoration: const InputDecoration(labelText: '목표', border: OutlineInputBorder()),
+          _genderRow(),
+          _rowDivider(),
+          _valueRow('나이', _ageCtrl, number: true),
+          _rowDivider(),
+          // BMI 카드를 실시간으로 갱신하기 위한 재빌드.
+          _valueRow('키 (cm)', _heightCtrl, number: true, onChanged: (_) => setState(() {})),
+          _rowDivider(),
+          _valueRow('몸무게 (kg)', _weightCtrl, number: true, onChanged: (_) => setState(() {})),
+          _rowDivider(),
+          _valueRow('목표', _goalCtrl),
+          const SizedBox(height: 6),
+        ],
+      ),
+    );
+  }
+
+  Widget _rowDivider() => Container(
+        height: 1,
+        margin: const EdgeInsets.only(left: 18),
+        color: AppColors.border,
+      );
+
+  /// 라벨 + 오른쪽 정렬 무테 입력 행. 값은 muted 톤(시안 입력값 #5C6A6C). 행 높이 ≥48(터치).
+  Widget _valueRow(String label, TextEditingController controller,
+      {bool number = false, ValueChanged<String>? onChanged}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 18),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 48),
+        child: Row(
+          children: [
+            Text(label, style: const TextStyle(fontSize: 15, color: AppColors.foreground)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: TextField(
+                controller: controller,
+                onChanged: onChanged,
+                keyboardType: number ? TextInputType.number : null,
+                textAlign: TextAlign.right,
+                style: const TextStyle(fontSize: 15, color: AppColors.foregroundMuted),
+                decoration: const InputDecoration(
+                  border: InputBorder.none,
+                  isCollapsed: true,
+                  contentPadding: EdgeInsets.symmetric(vertical: 14),
+                  hintText: '입력',
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 성별 — 시안 세그먼트 컨트롤(트랙 surfaceMuted, 선택 시 흰 pill + 미세 그림자).
+  /// 선택은 색만이 아니라 흰 pill 형태 + selected 시맨틱으로도 전달한다(WCAG 1.4.1).
+  Widget _genderRow() {
+    const genders = {'male': '남성', 'female': '여성', 'other': '기타'};
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+      child: Row(
+        children: [
+          const Text('성별', style: TextStyle(fontSize: 15, color: AppColors.foreground)),
+          const Spacer(),
+          Container(
+            decoration: BoxDecoration(
+              color: AppColors.surfaceMuted,
+              borderRadius: BorderRadius.circular(9),
+            ),
+            padding: const EdgeInsets.all(2),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final e in genders.entries)
+                  Semantics(
+                    button: true,
+                    selected: _gender == e.key,
+                    label: '성별 ${e.value}',
+                    excludeSemantics: true,
+                    child: InkWell(
+                      onTap: () => setState(() => _gender = e.key),
+                      borderRadius: BorderRadius.circular(7),
+                      child: Container(
+                        constraints: const BoxConstraints(minHeight: 40, minWidth: 44),
+                        alignment: Alignment.center,
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        decoration: BoxDecoration(
+                          color: _gender == e.key ? AppColors.surface : Colors.transparent,
+                          borderRadius: BorderRadius.circular(7),
+                          boxShadow: _gender == e.key
+                              ? [
+                                  BoxShadow(
+                                    color: AppColors.foreground.withValues(alpha: 0.15),
+                                    blurRadius: 2,
+                                    offset: const Offset(0, 1),
+                                  )
+                                ]
+                              : null,
+                        ),
+                        child: Text(e.value,
+                            style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.foreground)),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ],
       ),
     );
   }
 
+  /// 계정 삭제 — 시안 위험 카드(로즈 틴트). 로즈 색면 토큰이 없어(새 hex 금지) iOS 파괴적 셀
+  /// 패턴대로 흰 카드 + 레드(error) 경계·제목·설명·아웃라인 버튼으로 낸다(구 청록 카드 대체).
   Widget _dangerCard() {
-    return BlockCard(
-      style: AppBlocks.tintCrimson,
-      outlined: true,
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.error.withValues(alpha: 0.35)),
+      ),
       padding: const EdgeInsets.all(18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text('계정 삭제',
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+              style: TextStyle(
+                  fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.error)),
           const SizedBox(height: 6),
-          Text('삭제한 계정과 운동 기록은 되돌릴 수 없습니다.',
-              style: TextStyle(fontSize: 13, color: AppBlocks.tintCrimson.mutedOr)),
+          const Text('삭제한 계정과 운동 기록은 되돌릴 수 없습니다.',
+              style: TextStyle(fontSize: 13, height: 1.4, color: AppColors.error)),
           const SizedBox(height: 14),
           OutlinedButton.icon(
             onPressed: _deleteAccount,
@@ -580,50 +730,67 @@ class _ProgramSettingsScreenState extends State<ProgramSettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('운동 프로그램')),
-      body: FutureBuilder<List<Map<String, dynamic>>>(
-        future: _future,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) {
-            return const Padding(
-              padding: EdgeInsets.all(16),
-              child: SkeletonList(itemCount: 4),
+    // 프로필과 같은 산호↔청록 백드롭. 폼이 많은 화면이라 카드는 솔리드로 두고 배경만 그라데이션.
+    return GradientBackground(
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: FutureBuilder<List<Map<String, dynamic>>>(
+          future: _future,
+          builder: (context, snapshot) {
+            return CustomScrollView(
+              slivers: [
+                const SliverAppBar.large(pinned: true, title: Text('운동 프로그램')),
+                _bodySliver(snapshot),
+              ],
             );
-          }
-          if (snapshot.hasError) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: ErrorCard(
-                  message: '불러오기 실패: ${snapshot.error}',
-                  onRetry: () => setState(() => _future = _load()),
-                ),
-              ),
-            );
-          }
-          final exercises = snapshot.data ?? const [];
-          return ListView(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-            children: [
-              _progressionInfoCard(),
-              const SizedBox(height: 12),
-              if (exercises.isEmpty)
-                const EmptyState(
-                  icon: Icons.fitness_center,
-                  message: '설정할 수 있는 운동이 없습니다.',
-                )
-              else
-                ...exercises.map((e) {
-                  final id = e['id'].toString();
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: _exerciseCard(id, (e['name'] ?? id).toString()),
-                  );
-                }),
-            ],
-          );
-        },
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _bodySliver(AsyncSnapshot<List<Map<String, dynamic>>> snapshot) {
+    if (snapshot.connectionState != ConnectionState.done) {
+      return const SliverFillRemaining(
+        hasScrollBody: true,
+        child: SkeletonList(itemCount: 4),
+      );
+    }
+    if (snapshot.hasError) {
+      return SliverFillRemaining(
+        hasScrollBody: false,
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: ErrorCard(
+              message: '불러오기 실패: ${snapshot.error}',
+              onRetry: () => setState(() => _future = _load()),
+            ),
+          ),
+        ),
+      );
+    }
+    final exercises = snapshot.data ?? const [];
+    return SliverPadding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
+      sliver: SliverList.list(
+        children: [
+          _progressionInfoCard(),
+          const SizedBox(height: 12),
+          if (exercises.isEmpty)
+            const EmptyState(
+              icon: Icons.fitness_center,
+              message: '설정할 수 있는 운동이 없습니다.',
+            )
+          else
+            ...exercises.map((e) {
+              final id = e['id'].toString();
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: _exerciseCard(id, (e['name'] ?? id).toString()),
+              );
+            }),
+        ],
       ),
     );
   }

@@ -1,0 +1,4 @@
+# The Fit 로고 자산 위치.
+# 여기에 logo_a.png, logo_b.png (코랄+틸 그라디언트 매듭)를 배치하면
+# common.dart의 AppLogo가 자동으로 크로스페이드 애니메이션에 사용한다.
+# 파일이 없으면 AppLogo는 코랄 원형 + 'TF' 폴백을 표시한다(크래시 없음).

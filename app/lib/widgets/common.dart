@@ -3,11 +3,11 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import '../main.dart';
 
-/// 폼 점수 구간 색상 규칙 — 80↑ success(라임), 60↑ secondary(앰버), 미만 error(소프트 레드).
-/// dark: true는 트루 블랙 몰입 화면(workout)용. 새 팔레트에선 두 세트의 구간색 값이 같지만
-/// 시그니처는 유지한다 — 호출부 6개가 쓰고 있고, 세트가 다시 갈라질 때 여기만 고치면 된다.
-/// 세 색 모두 검증됨: 딥다크 12.85/11.60/7.00:1, 검정 13.93/12.58/7.59:1,
-/// cream 색면 11.66/10.53/6.36:1, navy 색면 9.22/8.33/5.03:1 — 전부 4.5:1 이상.
+/// 폼 점수 구간 색상 규칙 — 80↑ success(틸/green good), 60↑ secondary(앰버 mid), 미만 error(레드 bad).
+/// 세 색이 서로 구분되어야 하므로 브랜드 코랄(primary)과 겹치지 않게 잡았다: good=틸, mid=앰버,
+/// bad=크림슨 레드(코랄보다 더 붉은 톤). dark: true는 트루 블랙 몰입 화면(workout)용 — 값이 다르다.
+/// 라이트(흰 카드) 검증: 5.47 / 5.02 / 6.29:1, 라이트(scaffold) 4.90 / 4.50 / 5.63:1,
+/// 다크(검정) 7.90 / 12.58 / 7.59:1 — 전부 4.5:1 이상. (색만으로 전달 금지 → formScoreIcon 병행)
 Color formScoreColor(num score, {bool dark = false}) {
   if (score >= 80) return dark ? AppDark.success : AppColors.success;
   if (score >= 60) return dark ? AppDark.secondary : AppColors.secondary;
@@ -19,6 +19,205 @@ IconData formScoreIcon(num score) {
   if (score >= 80) return Icons.check_circle_rounded;
   if (score >= 60) return Icons.error_outline_rounded;
   return Icons.warning_amber_rounded;
+}
+
+// ---------------------------------------------------------------------------
+// 플랫 iOS 프리미티브 — 시안 기반 기반(화면팀 조립용). (크리스탈 글라스에서 전환)
+//   * GradientBackground : scaffold를 감싸는 단색 배경(오프화이트 / 트루블랙). 그라데이션 없음.
+//   * GlassCard          : 플랫 흰 카드(#FFF + 얇은 보더 + 미세 그림자). 블러 없음. 이름 유지.
+//   * GradientButton     : 솔리드 코랄 필(pill) CTA + 다크 잉크 텍스트.
+// 반복 아이템 색면은 솔리드 [BlockCard]가 담당한다.
+// ---------------------------------------------------------------------------
+
+/// 단색 배경. 화면 Scaffold를 감싸 쓴다:
+///   `GradientBackground(child: Scaffold(backgroundColor: Colors.transparent, ...))`
+/// 플랫 전환 후 그라데이션을 쓰지 않는다 — 오프화이트(라이트) / 트루블랙(workout) 단색을 칠한다.
+/// [gradient] 파라미터는 시그니처 호환용으로 남기되 **무시**한다(플랫 배경엔 그라데이션이 없다).
+class GradientBackground extends StatelessWidget {
+  final Widget child;
+
+  /// 트루 블랙 몰입 화면(workout)에서 true.
+  final bool dark;
+
+  /// (레거시) 무시됨 — 플랫 배경은 단색이다. 시그니처 호환용으로만 남긴다.
+  final Gradient? gradient;
+
+  const GradientBackground({
+    super.key,
+    required this.child,
+    this.dark = false,
+    this.gradient,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: dark ? AppDark.scaffold : AppColors.scaffold,
+      child: child,
+    );
+  }
+}
+
+/// 플랫 흰 카드 — 시안 기준 `#FFF` + 얇은 헤어라인 보더 + 미세 그림자(라이트 0 1px 2px rgba .04).
+/// (크리스탈 글라스에서 전환: BackdropFilter 블러 제거. 이름·시그니처는 화면 9개가 참조하므로 유지.)
+///
+/// **대비**: 표면 = 흰색 #FFFFFF → 위 ink 14.64:1 AAA. 텍스트/아이콘은 **어두운 잉크**
+/// ([AppColors.foreground])를 상속받는다.
+class GlassCard extends StatelessWidget {
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+  final double radius;
+
+  /// (레거시) 무시됨 — 플랫 카드엔 블러가 없다. 시그니처 호환용으로만 남긴다.
+  final double blur;
+
+  /// 지정 시 전체가 눌리는 카드(잉크 리플 + 포커스 + 최소 48px).
+  final VoidCallback? onTap;
+
+  /// 스크린리더용 요약.
+  final String? semanticLabel;
+
+  /// 트루 블랙 몰입 화면(workout)에서 true — 다크 카드면.
+  final bool dark;
+
+  const GlassCard({
+    super.key,
+    required this.child,
+    this.padding = const EdgeInsets.all(18),
+    this.radius = 22,
+    this.blur = 18,
+    this.onTap,
+    this.semanticLabel,
+    this.dark = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final br = BorderRadius.circular(radius);
+    final surface = dark ? AppDark.surface : AppColors.surface;
+    final borderColor = dark ? AppDark.border : AppColors.border;
+    final fg = dark ? AppDark.foreground : AppColors.foreground;
+    // 시안 라이트 카드 그림자 = 0 1px 2px rgba(28,43,46,.04). 다크는 순검정 미세 그림자.
+    final shadow = dark
+        ? const Color(0x66000000)
+        : const Color(0x0A1C2B2E);
+
+    Widget content = DefaultTextStyle.merge(
+      style: TextStyle(color: fg),
+      child: IconTheme.merge(
+        data: IconThemeData(color: fg),
+        child: Padding(padding: padding, child: child),
+      ),
+    );
+
+    content = Material(
+      color: Colors.transparent,
+      child: onTap == null
+          ? content
+          : InkWell(
+              onTap: onTap,
+              customBorder: RoundedRectangleBorder(borderRadius: br),
+              splashColor: fg.withValues(alpha: 0.10),
+              highlightColor: fg.withValues(alpha: 0.05),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 48),
+                child: content,
+              ),
+            ),
+    );
+
+    Widget card = DecoratedBox(
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: br,
+        border: Border.all(color: borderColor, width: 1),
+        boxShadow: [
+          BoxShadow(color: shadow, blurRadius: dark ? 12 : 2, offset: const Offset(0, 1)),
+        ],
+      ),
+      child: ClipRRect(borderRadius: br, child: content),
+    );
+
+    if (semanticLabel != null) {
+      card = Semantics(label: semanticLabel, container: true, child: card);
+    }
+    return card;
+  }
+}
+
+/// 솔리드 코랄 필(pill) CTA. FilledButton 테마와 별개로 아이콘 행·[PressScale]가 필요할 때 이 위젯으로.
+/// 채움 위 텍스트/아이콘은 **어두운 잉크**([AppColors.onPrimary] #26120B, coral 위 5.95:1 AA).
+/// 시안 CTA와 동일한 필 형태(radius 26+). 최소 높이 52, 최소 터치 48↑, 포커스 링, [PressScale], reduced-motion 존중.
+class GradientButton extends StatelessWidget {
+  final VoidCallback? onPressed;
+
+  /// 보통 Text. 색은 잉크로 자동 상속되므로 지정 불필요.
+  final Widget child;
+  final IconData? icon;
+
+  /// 채움. 기본 [AppGradients.coral](솔리드 코랄 coral_mid). 위 텍스트/아이콘은 잉크여야 한다.
+  final Gradient gradient;
+  final double minHeight;
+
+  const GradientButton({
+    super.key,
+    required this.onPressed,
+    required this.child,
+    this.icon,
+    this.gradient = AppGradients.coral,
+    this.minHeight = 52,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onPressed != null;
+    const ink = AppColors.onPrimary; // 밝은 코랄 채움 위 어두운 잉크(#26120B, 5.95:1)
+    final radius = BorderRadius.circular(999); // 필(pill) — 시안 CTA
+
+    final label = DefaultTextStyle.merge(
+      style: const TextStyle(color: ink, fontWeight: FontWeight.w700, fontSize: 16),
+      child: IconTheme.merge(
+        data: const IconThemeData(color: ink, size: 20),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[Icon(icon), const SizedBox(width: 8)],
+            Flexible(child: child),
+          ],
+        ),
+      ),
+    );
+
+    final button = Opacity(
+      opacity: enabled ? 1 : 0.5,
+      child: DecoratedBox(
+        decoration: BoxDecoration(gradient: gradient, borderRadius: radius),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onPressed,
+            borderRadius: radius,
+            splashColor: ink.withValues(alpha: 0.10),
+            highlightColor: ink.withValues(alpha: 0.06),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: minHeight),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                child: Center(child: label),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      child: PressScale(child: button),
+    );
+  }
 }
 
 /// 빈 상태 공통 위젯 — 아이콘 + 한 줄 안내 + 선택적 행동 버튼.
@@ -315,9 +514,10 @@ class BlockCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final shape = RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(radius),
-      // 카드면 위에 전경색을 합성한 결과가 **scaffold** 대비 3:1을 넘어야 한다(1.4.11).
-      // 새 다크 팔레트에서 0.55 합성 결과: cream 6.14 / tintNavy 6.47 / tint그린 7.72 /
-      // navy 6.86 / crimson 9.02 / gochujang 3.46 — 7개 슬롯 전부 통과.
+      // 전경색@0.55를 scaffold(#F2F2F7) 위에 합성한 보더가 scaffold 대비 3:1을 넘어야 한다(1.4.11).
+      // outlined는 배경이 scaffold와 가까운 옅은 슬롯에서만 켠다 — 그 슬롯은 전경이 어두워
+      // 합성 결과: cream 3.73 / tintNavy 3.73 / tintGochujang 3.73 / tintCrimson 3.17 /
+      // navy 3.73 / crimson 3.98 — 전부 ≥3. (gochujang 코랄 솔리드는 자체로 분리돼 outlined 미사용)
       side: outlined
           ? BorderSide(color: style.foreground.withValues(alpha: 0.55), width: 1)
           : BorderSide.none,
@@ -449,6 +649,15 @@ class BigStat extends StatelessWidget {
   final String? caption;
   final double size;
 
+  /// 지정 시 큰 숫자를 이 솔리드 색으로 칠한다. 히어로 focal 숫자엔 코랄([AppColors.primary])을
+  /// 넘긴다 — coral_deep은 밝은 글라스(#FFF7F3) 위 3.98:1로 큰 텍스트(3:1) 통과. 미지정 시
+  /// style.foreground(잉크)로 조용히 떨어진다. **작은(≤24px) 숫자엔 코랄을 넘기지 말 것(대비 미달).**
+  final Color? valueColor;
+
+  /// 지정 시 큰 숫자를 이 그라데이션 색으로 칠한다(ShaderMask). 현재 화면에선 미사용 — 산호↔청록
+  /// 브랜드 그라데이션을 걷어내고 솔리드([valueColor])로 통일했다. 훅만 남겨둔다.
+  final Gradient? gradient;
+
   const BigStat({
     super.key,
     required this.style,
@@ -456,7 +665,19 @@ class BigStat extends StatelessWidget {
     this.unit,
     this.caption,
     this.size = 56,
+    this.valueColor,
+    this.gradient,
   });
+
+  Widget _maybeGradient(Widget text) {
+    final g = gradient;
+    if (g == null) return text;
+    return ShaderMask(
+      blendMode: BlendMode.srcIn,
+      shaderCallback: (rect) => g.createShader(rect),
+      child: text,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -473,17 +694,21 @@ class BigStat extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.baseline,
             children: [
               Flexible(
-                child: Text(
-                  value,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: size,
-                    fontWeight: FontWeight.w800,
-                    height: 1.0,
-                    letterSpacing: -1.5,
-                    color: style.foreground,
-                    fontFeatures: const [FontFeature.tabularFigures()],
+                child: _maybeGradient(
+                  Text(
+                    value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: size,
+                      fontWeight: FontWeight.w800,
+                      height: 1.0,
+                      letterSpacing: -1.5,
+                      // gradient가 있으면 ShaderMask(srcIn)가 색을 대체하므로 흰색 베이스.
+                      // 아니면 valueColor(코랄 등 솔리드) → 없으면 style.foreground(잉크).
+                      color: gradient != null ? Colors.white : (valueColor ?? style.foreground),
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
                   ),
                 ),
               ),
@@ -874,6 +1099,11 @@ class FormScoreRing extends StatelessWidget {
   final double size;
   final double strokeWidth;
 
+  /// 지정 시 채움 호를 이 그라데이션으로 그린다. 현재 화면에선 미사용 — 링은 [color]=
+  /// [formScoreColor](의미색) 솔리드로 그린다(호 vs 트랙 4.27~5.34:1로 1.4.11 3:1 통과).
+  /// 산호↔청록 브랜드 그라데이션은 걷어냈고 훅만 남겨둔다.
+  final Gradient? gradient;
+
   const FormScoreRing({
     super.key,
     required this.score,
@@ -881,6 +1111,7 @@ class FormScoreRing extends StatelessWidget {
     this.trackColor,
     this.size = 72,
     this.strokeWidth = 8,
+    this.gradient,
   });
 
   @override
@@ -910,6 +1141,7 @@ class FormScoreRing extends StatelessWidget {
                     color: c,
                     track: track,
                     strokeWidth: strokeWidth,
+                    gradient: gradient,
                   ),
                   child: Center(
                     child: Text(
@@ -936,11 +1168,13 @@ class _RingPainter extends CustomPainter {
   final Color color;
   final Color track;
   final double strokeWidth;
+  final Gradient? gradient;
   const _RingPainter({
     required this.fraction,
     required this.color,
     required this.track,
     required this.strokeWidth,
+    this.gradient,
   });
 
   @override
@@ -954,13 +1188,18 @@ class _RingPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round;
     canvas.drawCircle(center, radius, trackPaint);
     if (fraction <= 0) return;
+    final rect = Rect.fromCircle(center: center, radius: radius);
     final fill = Paint()
-      ..color = color
       ..strokeWidth = strokeWidth
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round;
+    if (gradient != null) {
+      fill.shader = gradient!.createShader(rect);
+    } else {
+      fill.color = color;
+    }
     canvas.drawArc(
-      Rect.fromCircle(center: center, radius: radius),
+      rect,
       -pi / 2,
       2 * pi * fraction.clamp(0, 1),
       false,
@@ -972,5 +1211,108 @@ class _RingPainter extends CustomPainter {
   bool shouldRepaint(covariant _RingPainter oldDelegate) =>
       oldDelegate.fraction != fraction ||
       oldDelegate.color != color ||
-      oldDelegate.track != track;
+      oldDelegate.track != track ||
+      oldDelegate.gradient != gradient;
+}
+
+/// The Fit 브랜드 로고 마크.
+/// `assets/logo/logo_a.png`·`logo_b.png` 두 이미지를 크로스페이드 + 미세 회전(±2.9°)으로
+/// 번갈아 보여준다. disableAnimations면 정지 이미지 1장(logo_a).
+///
+/// **자산이 아직 없을 수 있다** — `Image.asset`의 errorBuilder로 코랄 원형 + 이니셜 'TF'
+/// 폴백을 그려 크래시를 막는다. 자산이 없으면 두 슬롯 모두 폴백이 되어 사실상 정지 로고가 된다.
+class AppLogo extends StatefulWidget {
+  final double size;
+
+  /// false면 크로스페이드/회전 애니메이션 없이 정지 로고(logo_a) 한 장만 보여준다.
+  /// 로그인처럼 "애니메이션 없이" 로고만 필요한 화면에서 쓴다. 기본 true.
+  final bool animate;
+
+  const AppLogo({super.key, this.size = 72, this.animate = true});
+
+  @override
+  State<AppLogo> createState() => _AppLogoState();
+}
+
+class _AppLogoState extends State<AppLogo> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller =
+      AnimationController(vsync: this, duration: const Duration(milliseconds: 2600));
+  bool _animate = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // widget.animate가 false면(로그인 등) 접근성 설정과 무관하게 항상 정지.
+    _animate = widget.animate && !MediaQuery.of(context).disableAnimations;
+    if (_animate) {
+      if (!_controller.isAnimating) _controller.repeat(reverse: true);
+    } else {
+      _controller.stop();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Widget _image(String asset) => Image.asset(
+        asset,
+        width: widget.size,
+        height: widget.size,
+        fit: BoxFit.contain,
+        gaplessPlayback: true,
+        errorBuilder: (_, __, ___) => _fallback(),
+      );
+
+  Widget _fallback() => Container(
+        width: widget.size,
+        height: widget.size,
+        alignment: Alignment.center,
+        decoration: const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle),
+        child: Text(
+          'TF',
+          style: TextStyle(
+            color: AppColors.onPrimary,
+            fontWeight: FontWeight.w800,
+            fontSize: widget.size * 0.34,
+            letterSpacing: 0.5,
+          ),
+        ),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: 'The Fit',
+      image: true,
+      child: SizedBox(
+        width: widget.size,
+        height: widget.size,
+        child: _animate
+            ? AnimatedBuilder(
+                animation: _controller,
+                builder: (context, _) {
+                  final t = Curves.easeInOut.transform(_controller.value);
+                  final angle = (t - 0.5) * 0.10; // ±0.05rad ≈ ±2.9°
+                  return Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Opacity(
+                        opacity: 1 - t,
+                        child: Transform.rotate(angle: angle, child: _image('assets/logo/logo_a.png')),
+                      ),
+                      Opacity(
+                        opacity: t,
+                        child: Transform.rotate(angle: angle, child: _image('assets/logo/logo_b.png')),
+                      ),
+                    ],
+                  );
+                },
+              )
+            : _image('assets/logo/logo_a.png'),
+      ),
+    );
+  }
 }

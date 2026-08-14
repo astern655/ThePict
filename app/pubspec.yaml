@@ -10,6 +10,9 @@ dependencies:
   flutter:
     sdk: flutter
   http: ^1.2.0
+  # 웹 카메라 스파이크: getUserMedia/<video>/<canvas> DOM 접근(dart:js_interop 기반).
+  # 이미 transitive로 물려 있어(1.1.1) 직접 선언만 승격한다.
+  web: ^1.1.0
   # 운동 영상을 골라 /inference/video(AI 엔진)로 올리기 위한 것.
   # 웹은 image_picker_for_web이 자동으로 물리고, 모바일은 플랫폼 폴더가 필요하다
   # (`flutter create .` 로 생성).
@@ -22,6 +25,11 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    # 로고 자산(logo_a.png / logo_b.png)이 배치될 디렉터리. 아직 비어 있으면
+    # AppLogo가 errorBuilder 폴백(코랄 원형 + 'TF')을 그린다. 디렉터리 단위로 선언해
+    # 파일이 나중에 추가돼도 pubspec 수정이 필요 없다(.gitkeep로 경로 유효성 확보).
+    - assets/logo/
   fonts:
     - family: Pretendard
       fonts:

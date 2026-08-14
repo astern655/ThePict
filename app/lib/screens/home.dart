@@ -133,52 +133,96 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('운동 선택')),
-      body: FutureBuilder<_HomeData>(
-        future: _dataFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) {
-            return const SkeletonList();
-          }
-          if (snapshot.hasError) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: ErrorCard(message: '불러오기 실패: ${snapshot.error}', onRetry: _reload),
-              ),
-            );
-          }
-          final exercises = snapshot.data?.exercises ?? [];
-          final sessions = snapshot.data?.sessions ?? [];
-          if (exercises.isEmpty) {
-            return EmptyState(
-              icon: Icons.sports_gymnastics,
-              message: '등록된 운동이 없습니다.',
-              actionLabel: '새로고침',
-              onAction: _reload,
-            );
-          }
-          final stats = _WeekStats.from(sessions);
-          return RefreshIndicator(
-            onRefresh: _reload,
-            color: AppColors.primary,
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
-              children: [
-                _HeroBlock(stats: stats),
-                if (stats.count > 0) ...[
-                  const SizedBox(height: 12),
-                  _StatPillRow(stats: stats),
-                ],
-                const SizedBox(height: 24),
-                const _SectionTitle('운동 선택'),
-                const SizedBox(height: 12),
-                _ExerciseGrid(exercises: exercises),
-              ],
+    // 크리스탈 글라스: 밝은 백드롭 위에 히어로 한 장만 프로스티드 글라스로 띄우고,
+    // 반복되는 스탯필·운동 그리드는 솔리드 색면(BlockCard)으로 둔다(스크롤 성능).
+    return GradientBackground(
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        // iOS 라지 타이틀 — 스크롤과 무관하게 상단에 고정, 모든 상태(로딩/에러/빈/데이터)에서 유지.
+        body: SafeArea(
+          bottom: false,
+          child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 10, 20, 12),
+              child: _Wordmark(),
             ),
-          );
-        },
+            Expanded(
+              child: FutureBuilder<_HomeData>(
+                future: _dataFuture,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState != ConnectionState.done) {
+                    return const SkeletonList();
+                  }
+                  if (snapshot.hasError) {
+                    return Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: ErrorCard(message: '불러오기 실패: ${snapshot.error}', onRetry: _reload),
+                      ),
+                    );
+                  }
+                  final exercises = snapshot.data?.exercises ?? [];
+                  final sessions = snapshot.data?.sessions ?? [];
+                  if (exercises.isEmpty) {
+                    return EmptyState(
+                      icon: Icons.sports_gymnastics,
+                      message: '등록된 운동이 없습니다.',
+                      actionLabel: '새로고침',
+                      onAction: _reload,
+                    );
+                  }
+                  final stats = _WeekStats.from(sessions);
+                  return RefreshIndicator(
+                    onRefresh: _reload,
+                    color: AppColors.primary,
+                    child: ListView(
+                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 28),
+                      children: [
+                        _HeroBlock(stats: stats),
+                        if (stats.count > 0) ...[
+                          const SizedBox(height: 12),
+                          _StatPillRow(stats: stats),
+                        ],
+                        const SizedBox(height: 24),
+                        const _SectionTitle('운동 선택'),
+                        const SizedBox(height: 12),
+                        _ExerciseGrid(exercises: exercises),
+                      ],
+                    ),
+                  );
+                },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 시안 홈 상단 워드마크 — 'THE FIT' 이탤릭.
+/// 사용자가 주황↔초록 그라데이션을 금지했으므로 솔리드 코랄로 쓴다(시안은 그라데이션이지만 지시 우선).
+/// 26px 이탤릭 볼드 = 큰 텍스트라 오프화이트 배경 위 primaryText로 3:1 충족.
+class _Wordmark extends StatelessWidget {
+  const _Wordmark();
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      header: true,
+      label: 'The Fit',
+      child: const Text(
+        'THE FIT',
+        style: TextStyle(
+          fontSize: 26,
+          fontWeight: FontWeight.w800,
+          fontStyle: FontStyle.italic,
+          letterSpacing: -0.8,
+          color: AppColors.primaryText, // 솔리드 코랄 (#C63D22)
+        ),
       ),
     );
   }
@@ -201,22 +245,25 @@ class _SectionTitle extends StatelessWidget {
   }
 }
 
-/// 화면 상단을 장악하는 네이비 솔리드 색면.
-/// 이번 주 총 렙(거대 숫자) + 연속일 배지 + 요일별 볼륨 막대를 한 덩어리로 묶는다.
+/// 화면 상단을 장악하는 프로스티드 글라스 히어로(화면에서 유일한 GlassCard — 포컬).
+/// 이번 주 총 렙(그라데이션 거대 숫자) + 연속일 배지 + 요일별 볼륨 막대를 한 덩어리로 묶는다.
 class _HeroBlock extends StatelessWidget {
   final _WeekStats stats;
   const _HeroBlock({required this.stats});
 
   static const _dayLabels = ['일', '월', '화', '수', '목', '금', '토'];
 
+  /// 글라스 위 텍스트/막대 토큰 — 밝은 글라스 실효면(#FFF7F3) 위 잉크 + 슬레이트 muted.
+  /// (cream 슬롯이 ink 전경 + 라이트 배경 muted를 이미 검증해 그대로 재사용한다.)
+  static const _glassInk = AppBlocks.cream;
+
   @override
   Widget build(BuildContext context) {
-    const style = AppBlocks.navy;
     final hasData = stats.count > 0;
 
-    return BlockCard(
-      style: style,
+    return GlassCard(
       padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
+      radius: 26,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -229,32 +276,40 @@ class _HeroBlock extends StatelessWidget {
                   style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, letterSpacing: 0.4),
                 ),
               ),
-              StreakBadge(
-                days: stats.streak,
-                style: stats.streak > 0 ? AppBlocks.crimson : AppBlocks.darkNeutral,
-              ),
+              // 스트릭이 있을 때만 코랄 배지로 브랜드 강조. 0일이면 배지를 숨긴다.
+              if (stats.streak > 0)
+                StreakBadge(days: stats.streak, style: AppBlocks.gochujang),
             ],
           ),
           const SizedBox(height: 18),
           if (!hasData)
-            const EmptyState(
-              icon: Icons.event_busy,
-              message: '이번 주 운동 기록이 없어요.\n아래에서 운동을 골라 첫 세트를 시작해보세요.',
-              compact: true,
-              dark: true,
+            // 글라스 히어로 안의 빈 상태 — 글라스 실효면 위 muted(7.09:1)로 그린다.
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.event_busy, color: _glassInk.mutedOr, size: 34),
+                const SizedBox(height: 10),
+                Text(
+                  '이번 주 운동 기록이 없어요.\n아래에서 운동을 골라 첫 세트를 시작해보세요.',
+                  style: TextStyle(color: _glassInk.mutedOr, fontSize: 13, height: 1.4),
+                ),
+              ],
             )
           else ...[
             BigStat(
-              style: style,
+              style: _glassInk,
+              // 시안은 큰 숫자를 darken한다 — 흰 카드 위 primaryText(#C63D22, 5.13:1)로 칠한다.
+              // (coral_mid는 흰 위 3.00으로 큰텍스트 경계라 더 안전한 darken 코랄을 쓴다.)
+              valueColor: AppColors.primaryText,
               value: '${stats.totalReps}',
               unit: '회',
               caption: '이번 주 총 렙 수',
-              size: 60,
+              size: 64,
             ),
             const SizedBox(height: 18),
             MiniBarChart(
               values: stats.weeklyReps,
-              style: style,
+              style: _glassInk,
               labels: _dayLabels,
               showValues: true,
               highlightIndex: stats.todayIndex,
@@ -284,9 +339,12 @@ class _StatPillRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // 시안 스탯 3연: 흰 카드 / 페일 코랄 / 페일 틸 — 전부 라이트 톤이라 아웃라인으로 면을 세운다.
+          // (시안은 여기서 솔리드 코랄을 쓰지 않는다 — 코랄 솔리드는 스트릭 배지 한 곳에만.)
           Expanded(
             child: StatPill(
-              style: AppBlocks.crimson,
+              style: AppBlocks.cream,
+              outlined: true, // 흰 카드는 scaffold와 1.05:1 → 아웃라인 필수
               value: '${stats.count}',
               unit: '회',
               label: '운동 횟수',
@@ -297,7 +355,8 @@ class _StatPillRow extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: StatPill(
-              style: AppBlocks.gochujang,
+              style: AppBlocks.tintGochujang, // 페일 코랄 틴트(시안 평균 폼 점수 카드)
+              outlined: true,
               value: avg == null ? '-' : '${avg.round()}',
               unit: avg == null ? null : '점',
               label: '평균 폼 점수',
@@ -308,7 +367,8 @@ class _StatPillRow extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: StatPill(
-              style: AppBlocks.navy,
+              style: AppBlocks.tintCrimson,
+              outlined: true, // 페일 틸도 scaffold 위에서 아웃라인 필요
               value: perSet == null ? '-' : perSet.toStringAsFixed(1),
               unit: perSet == null ? null : '회',
               label: '세트당 렙',
@@ -322,13 +382,14 @@ class _StatPillRow extends StatelessWidget {
   }
 }
 
-/// 2열 벤토 그리드. 지원 운동은 솔리드 색면을 돌려 쓰고, 미지원은 중립(크림+아웃라인)으로 내린다.
+/// 2열 벤토 그리드. 지원 운동 타일은 전부 같은 밝은 톤으로 통일하고, 미지원은 중립(크림)으로 내린다.
 class _ExerciseGrid extends StatelessWidget {
   final List<dynamic> exercises;
   const _ExerciseGrid({required this.exercises});
 
-  /// 지원 운동에만 순환 적용. 미지원 카드는 이 순환을 소비하지 않는다.
-  static const _cycle = [AppBlocks.gochujang, AppBlocks.navy, AppBlocks.crimson];
+  /// 지원 운동 타일은 전부 같은 밝은 톤(페일 코랄, 글라스풍)으로 통일한다 — 스쿼트=푸시업.
+  /// 진한 솔리드 코랄(gochujang) 덩어리를 걷어내 "너무 진하다"를 덜어냈다. 코랄은 큰숫자·CTA에만.
+  static const _support = AppBlocks.tintGochujang;
 
   @override
   Widget build(BuildContext context) {
@@ -336,15 +397,20 @@ class _ExerciseGrid extends StatelessWidget {
       builder: (context, constraints) {
         const gap = 12.0;
         final width = (constraints.maxWidth - gap) / 2;
-        var supportedSeen = 0;
         final tiles = <Widget>[];
-        for (final raw in exercises) {
+        // 지원(측정 가능) 운동을 앞으로. 순서는 안정 정렬이라 각 그룹 내 원래 순서는 유지된다.
+        final ordered = [...exercises]..sort((a, b) {
+            final sa = (a as Map<String, dynamic>)['supported'] as bool? ?? false;
+            final sb = (b as Map<String, dynamic>)['supported'] as bool? ?? false;
+            return sa == sb ? 0 : (sa ? -1 : 1);
+          });
+        for (final raw in ordered) {
           final ex = raw as Map<String, dynamic>;
           final supported = ex['supported'] as bool? ?? false;
-          final style = supported ? _cycle[supportedSeen++ % _cycle.length] : AppBlocks.cream;
+          final style = supported ? _support : AppBlocks.cream;
           tiles.add(SizedBox(
             width: width,
-            height: 156,
+            height: 150,
             child: _ExerciseTile(
               ex: ex,
               style: style,
@@ -384,8 +450,8 @@ class _ExerciseTile extends StatelessWidget {
 
     return BlockCard(
       style: style,
-      // 미지원 카드는 크림 = scaffold와 거의 같은 밝기 → 아웃라인으로 면을 세운다.
-      outlined: !supported,
+      // 지원(페일 코랄)·미지원(크림) 둘 다 scaffold와 밝기가 가까운 라이트 톤 → 아웃라인으로 면을 세운다.
+      outlined: true,
       onTap: onTap,
       padding: const EdgeInsets.all(16),
       semanticLabel: supported

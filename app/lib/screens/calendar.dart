@@ -136,21 +136,27 @@ class _CalendarScreenState extends State<CalendarScreen> {
       context: context,
       // 분석 문장이 길어 시트가 화면 절반을 넘는다 → 드래그로 높이를 사용자가 정한다.
       isScrollControlled: true,
-      // 시트 전체가 하나의 중립 다크 색면 — 화면에서 올라오는 순간 면이 바뀐다.
-      backgroundColor: AppBlocks.navy.background,
+      // 크리스탈 글라스 시트: 배경을 투명으로 두고 시트 표면 자체를 산호↔청록 백드롭으로 채운다.
+      // 그래야 그날 요약 글라스 히어로가 그라데이션을 블러해 실제 유리 질감을 낸다(단일 시트라 성능 OK).
+      // 상단은 크게 둥근 iOS 시트 코너(28) — 모달 shape가 그라데이션을 라운드로 클립한다.
+      backgroundColor: Colors.transparent,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
+      // 배경이 투명이라 시트 표면(그라데이션)이 라운드 밖으로 새지 않도록 시트 머티리얼을 클립한다.
+      clipBehavior: Clip.antiAlias,
       builder: (_) => DraggableScrollableSheet(
         expand: false,
         initialChildSize: 0.72,
         minChildSize: 0.4,
         maxChildSize: 0.95,
-        builder: (context, scrollController) => _DaySheet(
-          date: dateStr,
-          title: day == null ? dateStr : '${day.month}월 ${day.day}일',
-          exerciseNames: _exerciseNames,
-          scrollController: scrollController,
+        builder: (context, scrollController) => GradientBackground(
+          child: _DaySheet(
+            date: dateStr,
+            title: day == null ? dateStr : '${day.month}월 ${day.day}일',
+            exerciseNames: _exerciseNames,
+            scrollController: scrollController,
+          ),
         ),
       ),
     );
@@ -158,103 +164,163 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('$_monthKey 기록'),
-        actions: [
-          IconButton(
-              tooltip: '이전 달',
-              icon: const Icon(Icons.chevron_left),
-              onPressed: () => _changeMonth(-1)),
-          IconButton(
-              tooltip: '다음 달',
-              icon: const Icon(Icons.chevron_right),
-              onPressed: () => _changeMonth(1)),
+    // 시안 캘린더: 큰 제목 "YYYY-MM 기록"(30px) + 오른쪽 원형 이전/다음 달 버튼을 화면 상단에
+    // 인라인으로 둔다(접히는 iOS 라지 타이틀 대신 — 시안엔 접힘 바가 없다). 그 아래로
+    // 월 히어로·스탯·히트맵이 스크롤된다. 로딩/에러도 헤더 아래 슬리버로 채운다.
+    return GradientBackground(
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: SafeArea(
+          bottom: false,
+          child: FutureBuilder<_CalendarData>(
+            future: _dataFuture,
+            builder: (context, snapshot) {
+              return CustomScrollView(
+                slivers: [
+                  SliverToBoxAdapter(child: _header()),
+                  _bodySliver(snapshot),
+                ],
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 시안 상단 헤더 — 월 제목 + 오른쪽 원형 월 이동 버튼 2개(rgba(28,43,46,.06) 배경).
+  Widget _header() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 12, 14),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              '$_monthKey 기록',
+              style: const TextStyle(
+                fontSize: 30,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.5,
+                color: AppColors.foreground,
+              ),
+            ),
+          ),
+          _circleNavButton(
+              icon: Icons.chevron_left, tooltip: '이전 달', onPressed: () => _changeMonth(-1)),
+          const SizedBox(width: 4),
+          _circleNavButton(
+              icon: Icons.chevron_right, tooltip: '다음 달', onPressed: () => _changeMonth(1)),
         ],
       ),
-      body: FutureBuilder<_CalendarData>(
-        future: _dataFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: ErrorCard(
-                  message: '불러오기 실패: ${snapshot.error}',
-                  onRetry: () => setState(_load),
-                ),
-              ),
-            );
-          }
-          final data = snapshot.data!;
-          return ListView(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
+    );
+  }
+
+  Widget _circleNavButton({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback onPressed,
+  }) {
+    return IconButton(
+      onPressed: onPressed,
+      tooltip: tooltip,
+      iconSize: 20,
+      style: IconButton.styleFrom(
+        backgroundColor: AppColors.foreground.withValues(alpha: 0.06),
+        foregroundColor: AppColors.foreground,
+        minimumSize: const Size(44, 44),
+        shape: const CircleBorder(),
+      ),
+      icon: Icon(icon),
+    );
+  }
+
+  Widget _bodySliver(AsyncSnapshot<_CalendarData> snapshot) {
+    if (snapshot.connectionState != ConnectionState.done) {
+      return const SliverFillRemaining(
+        hasScrollBody: false,
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (snapshot.hasError) {
+      return SliverFillRemaining(
+        hasScrollBody: false,
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: ErrorCard(
+              message: '불러오기 실패: ${snapshot.error}',
+              onRetry: () => setState(_load),
+            ),
+          ),
+        ),
+      );
+    }
+    final data = snapshot.data!;
+    return SliverPadding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+      sliver: SliverList.list(
+        children: [
+          _MonthHero(month: _month, data: data),
+          const SizedBox(height: 12),
+          Row(
             children: [
-              _MonthHero(month: _month, data: data),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: StatPill(
-                      style: AppBlocks.crimson,
-                      value: '${data.markedDates.length}',
-                      unit: '일',
-                      label: '운동일 수',
-                      icon: Icons.calendar_month_rounded,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: StatPill(
-                      style: AppBlocks.gochujang,
-                      value: '${data.sessionCount}',
-                      unit: '회',
-                      label: '총 세션',
-                      icon: Icons.repeat_rounded,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: StatPill(
-                      style: AppBlocks.cream,
-                      outlined: true, // 크림 필은 크림 scaffold 위 1.07:1 — 경계가 없으면 사라진다
-                      value: data.avgForm == null ? '–' : '${data.avgForm!.round()}',
-                      unit: data.avgForm == null ? null : '점',
-                      label: '평균 폼 점수',
-                      icon: Icons.speed_rounded,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              _MonthGrid(
-                month: _month,
-                countByDate: data.countByDate,
-                markedDates: data.markedDates,
-                onTapDay: _showDay,
-              ),
-              const SizedBox(height: 12),
-              const _HeatLegend(),
-              if (data.markedDates.isEmpty) ...[
-                const SizedBox(height: 8),
-                const EmptyState(
-                  icon: Icons.calendar_month_outlined,
-                  message: '이 달에는 기록이 없어요.',
-                  compact: true,
+              Expanded(
+                child: StatPill(
+                  style: AppBlocks.crimson,
+                  value: '${data.markedDates.length}',
+                  unit: '일',
+                  label: '운동일 수',
+                  icon: Icons.calendar_month_rounded,
                 ),
-              ],
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: StatPill(
+                  style: AppBlocks.gochujang,
+                  value: '${data.sessionCount}',
+                  unit: '회',
+                  label: '총 세션',
+                  icon: Icons.repeat_rounded,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: StatPill(
+                  style: AppBlocks.cream,
+                  outlined: true, // 크림 필은 크림 scaffold 위 1.07:1 — 경계가 없으면 사라진다
+                  value: data.avgForm == null ? '–' : '${data.avgForm!.round()}',
+                  unit: data.avgForm == null ? null : '점',
+                  label: '평균 폼 점수',
+                  icon: Icons.speed_rounded,
+                ),
+              ),
             ],
-          );
-        },
+          ),
+          const SizedBox(height: 12),
+          _MonthGrid(
+            month: _month,
+            countByDate: data.countByDate,
+            markedDates: data.markedDates,
+            onTapDay: _showDay,
+          ),
+          const SizedBox(height: 12),
+          const _HeatLegend(),
+          if (data.markedDates.isEmpty) ...[
+            const SizedBox(height: 8),
+            const EmptyState(
+              icon: Icons.calendar_month_outlined,
+              message: '이 달에는 기록이 없어요.',
+              compact: true,
+            ),
+          ],
+        ],
       ),
     );
   }
 }
 
-/// 월 히어로 — 네이비 솔리드 색면. 거대 숫자(총 렙) + 주차별 세션 막대.
+/// 월 히어로 = 프로스티드 글라스. 거대 숫자(총 렙, 브랜드 그라데이션) + 주차별 세션 막대.
+/// 글라스 실효면(#FFF7F3)은 밝으므로 차트/캡션은 라이트 톤(cream: 잉크 전경)을 쓴다.
 class _MonthHero extends StatelessWidget {
   final DateTime month;
   final _CalendarData data;
@@ -262,17 +328,20 @@ class _MonthHero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const style = AppBlocks.navy;
-    return BlockCard(
-      style: style,
+    const style = AppBlocks.cream; // 글라스 위 라이트 톤(잉크 전경/뮤티드)
+    return GlassCard(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
+      radius: 26,
       semanticLabel: '${month.month}월 총 ${data.totalReps}렙, '
           '운동일 ${data.markedDates.length}일, 세션 ${data.sessionCount}회',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('${month.month}월 누적',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: style.mutedOr)),
+              style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.foregroundMuted)),
           const SizedBox(height: 10),
           BigStat(
             style: style,
@@ -280,6 +349,7 @@ class _MonthHero extends StatelessWidget {
             unit: '렙',
             caption: data.sessionCount == 0 ? '아직 기록이 없어요' : '${data.sessionCount}회 세션의 합계',
             size: 52,
+            valueColor: AppColors.primary, // 히어로 숫자 = 솔리드 코랄(글라스 위 3.98:1)
           ),
           const SizedBox(height: 16),
           MiniBarChart(
@@ -497,32 +567,33 @@ class _DaySheetState extends State<_DaySheet> {
 
   @override
   Widget build(BuildContext context) {
-    const sheet = AppBlocks.navy;
     return SafeArea(
       top: false,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
+          // iOS 그래버(grabber) — 옅은 회색 알약. scaffold 위 separator 톤.
           Center(
             child: Container(
-              width: 40,
-              height: 4,
+              width: 36,
+              height: 5,
               decoration: BoxDecoration(
-                color: sheet.mutedOr,
+                color: AppColors.foregroundMuted.withValues(alpha: 0.4),
                 borderRadius: BorderRadius.circular(999),
               ),
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Text(
               widget.title,
-              style: TextStyle(
-                color: sheet.foreground,
-                fontSize: 22,
+              style: const TextStyle(
+                color: AppColors.foreground,
+                fontSize: 24,
                 fontWeight: FontWeight.w800,
+                letterSpacing: -0.3,
               ),
             ),
           ),
@@ -598,13 +669,12 @@ class _DaySheetState extends State<_DaySheet> {
     );
   }
 
-  /// 그날 전체 요약 — 시트 맨 위 딤 그린 색면.
-  /// 시트 배경(#272E2A) 대비 1.40:1이라 `outlined`가 없으면 면이 사라진다(경계 5.54:1).
+  /// 그날 전체 요약 — 시트 맨 위 프로스티드 글라스 히어로. 뒤 그라데이션을 블러해 유리 질감을 낸다.
+  /// 헤더는 텍스트 안전 산호 [AppColors.primaryText] — 글라스 실효면(#FFF7F3) 위 4.84:1로 통과한다.
+  /// (구 코드의 [AppColors.primary]는 4.5 미달이었고, tintGochujang 색면 위에선 3.4까지 떨어졌다.)
   Widget _summaryCard(List<String> summary, int sessionCount) {
-    const style = AppBlocks.tintGochujang;
-    return BlockCard(
-      style: style,
-      outlined: true,
+    return GlassCard(
+      radius: 20,
       padding: const EdgeInsets.all(16),
       semanticLabel: '이 날의 요약. ${summary.join(" ")}',
       child: Column(
@@ -612,7 +682,7 @@ class _DaySheetState extends State<_DaySheet> {
         children: [
           Row(
             children: [
-              const Icon(Icons.insights_rounded, size: 18, color: AppColors.primary),
+              const Icon(Icons.insights_rounded, size: 18, color: AppColors.primaryText),
               const SizedBox(width: 8),
               const Expanded(
                 child: Text(
@@ -620,12 +690,12 @@ class _DaySheetState extends State<_DaySheet> {
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w800,
-                    color: AppColors.primary,
+                    color: AppColors.primaryText,
                   ),
                 ),
               ),
               Text('세션 $sessionCount회',
-                  style: TextStyle(fontSize: 12, color: style.mutedOr)),
+                  style: const TextStyle(fontSize: 12, color: AppColors.foregroundMuted)),
             ],
           ),
           const SizedBox(height: 8),
@@ -633,7 +703,8 @@ class _DaySheetState extends State<_DaySheet> {
             Padding(
               padding: const EdgeInsets.only(bottom: 4),
               child: Text(line,
-                  style: TextStyle(fontSize: 14, height: 1.5, color: style.foreground)),
+                  style: const TextStyle(
+                      fontSize: 14, height: 1.5, color: AppColors.foreground)),
             ),
         ],
       ),
@@ -666,7 +737,7 @@ class _SessionAnalysisCard extends StatelessWidget {
 
     return BlockCard(
       style: style,
-      // 시트 배경(#272E2A) 대비 1.26:1 — 경계 없이는 카드가 배경에 녹는다(경계 4.41:1).
+      // 흰 카드가 밝은 그라데이션 시트 위에선 대비가 낮다 — 경계 없이는 배경에 녹으므로 outlined로 세운다.
       outlined: true,
       padding: const EdgeInsets.fromLTRB(6, 6, 6, 6),
       child: Column(
@@ -829,6 +900,8 @@ class _AnalysisBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final style = highlighted ? AppBlocks.tintGochujang : AppBlocks.cream;
+    // accent(코랄)는 아이콘·불릿 같은 그래픽에만(3:1). 12px 제목 텍스트는 tintGochujang 위에서
+    // 코랄이 3.43:1로 미달이라, 제목은 색면 전경(잉크, 12:1+)으로 두어 4.5:1 규칙을 지킨다.
     final accent = color ?? AppColors.primary;
 
     final content = Column(
@@ -841,7 +914,8 @@ class _AnalysisBlock extends StatelessWidget {
             const SizedBox(width: 6),
             Expanded(
               child: Text(title,
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: accent)),
+                  style: TextStyle(
+                      fontSize: 12, fontWeight: FontWeight.w800, color: style.foreground)),
             ),
           ],
         ),
@@ -862,7 +936,7 @@ class _AnalysisBlock extends StatelessWidget {
                 ),
                 Expanded(
                   child: Text(line,
-                      style: TextStyle(fontSize: 13.5, height: 1.55, color: style.foreground)),
+                      style: TextStyle(fontSize: 14, height: 1.6, color: style.foreground)),
                 ),
               ],
             ),

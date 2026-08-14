@@ -60,3 +60,23 @@ def load_detector_class():
             f"(원인: {exc})"
         ) from exc
     return PoseDetector
+
+
+def load_create_analyzer():
+    """`ai.analysis.exercises.create_analyzer` 함수.
+
+    이걸 import 하면 `ai/__init__.py`가 `ai.engine`을 거쳐 opencv/ultralytics를
+    끌어온다. 그래서 모듈 최상단이 아니라 여기서 지연 로드하고, 의존성이 없으면
+    EngineUnavailable로 바꾼다 — 그래야 AI 미설치 환경에서도 서버가 뜨고
+    실시간 스트림만 막힌다(video 경로의 503과 같은 정책).
+    """
+    ensure_path()
+    try:
+        from ai.analysis.exercises import create_analyzer
+    except ImportError as exc:
+        raise EngineUnavailable(
+            "AI 엔진 의존성이 설치되지 않았습니다. "
+            "저장소 루트에서 `pip install -r requirements.txt` 를 실행하세요. "
+            f"(원인: {exc})"
+        ) from exc
+    return create_analyzer
