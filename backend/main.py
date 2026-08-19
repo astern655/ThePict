@@ -7,9 +7,11 @@ import uuid
 from datetime import date as date_cls
 from typing import Literal, Optional
 
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile, WebSocket
+from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from starlette.websockets import WebSocketDisconnect
 
 import ai_bridge
 import analysis
@@ -17,6 +19,7 @@ import db
 import pose_estimator
 import pose_eval
 import program
+import stream_session
 import video_analysis
 
 app = FastAPI()
@@ -169,6 +172,21 @@ def _user_out(user_row: dict) -> dict:
     return {k: v for k, v in user_row.items() if k != "password_hash"}
 
 
+def _user_for_token(token: str, conn: sqlite3.Connection) -> Optional[dict]:
+    """토큰 → 사용자 행(dict). 토큰이 없거나 사용자가 없으면 None.
+
+    HTTP(Authorization 헤더)와 WebSocket(첫 메시지의 token) 이 공유한다 —
+    브라우저 WS 는 커스텀 헤더를 못 넣어 토큰을 본문으로 받기 때문이다.
+    """
+    row = conn.execute("SELECT email FROM tokens WHERE token = ?", (token,)).fetchone()
+    if row is None:
+        return None
+    user_row = conn.execute("SELECT * FROM users WHERE email = ?", (row["email"],)).fetchone()
+    if user_row is None:
+        return None
+    return db.row_to_dict(user_row)
+
+
 def get_current_user(
     authorization: Optional[str] = Header(None),
     conn: sqlite3.Connection = Depends(db.get_db),
@@ -176,13 +194,10 @@ def get_current_user(
     if authorization is None or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="invalid auth header")
     token = authorization.removeprefix("Bearer ")
-    row = conn.execute("SELECT email FROM tokens WHERE token = ?", (token,)).fetchone()
-    if row is None:
+    user = _user_for_token(token, conn)
+    if user is None:
         raise HTTPException(status_code=401, detail="invalid token")
-    user_row = conn.execute("SELECT * FROM users WHERE email = ?", (row["email"],)).fetchone()
-    if user_row is None:
-        raise HTTPException(status_code=401, detail="invalid token")
-    return db.row_to_dict(user_row)
+    return user
 
 
 @app.post("/auth/register", status_code=201)
@@ -489,6 +504,89 @@ async def inference_video(
     # annotated_video_path는 서버 로컬 경로다. 클라이언트에 흘리지 않는다.
     report.pop("annotated_video_path", None)
     return {"report": report, "set": video_analysis.to_set(report, exercise_id)}
+
+
+@app.websocket("/inference/stream")
+async def inference_stream(ws: WebSocket):
+    """카메라 프레임을 실시간으로 받아 프레임 단위로 판정하고, 종료 시 세트 하나를 낸다.
+
+    프로토콜(텍스트 JSON + 바이너리 프레임 혼합):
+      C→S start(text):  {"type":"start","token":"<uuid>","exercise_id":"squat"}
+      S→C ready(text):  {"type":"ready"}
+      C→S frame(binary): JPEG bytes
+      S→C frame(text):  {"type":"frame","person":...,"rep_count":..,"phase":"UP",
+                         "last_verdict":..,"warn":..}
+      C→S stop(text):   {"type":"stop"}
+      S→C result(text): {"type":"result","set":{...},"report":{...}} → close
+      오류(text):        {"type":"error","code":"engine_unavailable|unsupported_exercise|
+                         auth_failed|bad_frame"} → close
+
+    detect/update 는 동기 블로킹(YOLO 추론)이라 run_in_threadpool 로 감싸 이벤트
+    루프를 막지 않는다. 연결당 순차 처리라 세션 상태 경합은 없다.
+    """
+    await ws.accept()
+
+    try:
+        start = await ws.receive_json()
+    except WebSocketDisconnect:
+        return
+
+    if not isinstance(start, dict) or start.get("type") != "start":
+        await ws.send_json({"type": "error", "code": "auth_failed"})
+        await ws.close()
+        return
+
+    token = start.get("token") or ""
+    exercise_id = start.get("exercise_id") or ""
+
+    # 인증: HTTP와 같은 토큰→사용자 조회를 공유한다.
+    db_gen = db.get_db()
+    conn = next(db_gen)
+    try:
+        user = _user_for_token(token, conn)
+    finally:
+        db_gen.close()
+    if user is None:
+        await ws.send_json({"type": "error", "code": "auth_failed"})
+        await ws.close()
+        return
+
+    if exercise_id not in video_analysis.SUPPORTED_EXERCISES:
+        await ws.send_json({"type": "error", "code": "unsupported_exercise"})
+        await ws.close()
+        return
+
+    try:
+        session = await run_in_threadpool(stream_session.StreamSession, exercise_id)
+    except ai_bridge.EngineUnavailable:
+        await ws.send_json({"type": "error", "code": "engine_unavailable"})
+        await ws.close()
+        return
+
+    await ws.send_json({"type": "ready"})
+
+    try:
+        while True:
+            msg = await ws.receive()
+            if msg["type"] == "websocket.disconnect":
+                return
+            if msg.get("bytes") is not None:
+                try:
+                    result = await run_in_threadpool(session.feed, msg["bytes"])
+                except stream_session.BadFrame:
+                    await ws.send_json({"type": "error", "code": "bad_frame"})
+                    await ws.close()
+                    return
+                await ws.send_json({"type": "frame", **result})
+            elif msg.get("text") is not None:
+                data = json.loads(msg["text"])
+                if data.get("type") == "stop":
+                    out = await run_in_threadpool(session.finish)
+                    await ws.send_json({"type": "result", "set": out["set"], "report": out["report"]})
+                    await ws.close()
+                    return
+    except WebSocketDisconnect:
+        return
 
 
 # ---- 운동 프로그램 (세트/휴식) ----
