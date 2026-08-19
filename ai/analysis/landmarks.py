@@ -152,6 +152,48 @@ def side_view_ratio(person: Person) -> float | None:
     return abs(ls.x - rs.x) / length
 
 
+def hip_gap_ratio(person: Person) -> float | None:
+    """좌우 엉덩이의 화면상 수평 간격 ÷ 몸통 길이.
+
+    [[side_view_ratio]]와 같은 원리를 골반에 적용한 보조 지표. 정면에서는
+    어깨가 팔 동작·가림으로 흔들려도 골반 간격은 안정적으로 벌어져 보인다.
+    실측(푸시업 27편): 측면 바닥 자세 최대 0.659, 명백한 정면 1.63·3.74
+    (docs/PUSHUP_TUNING.md §7-B 재설계).
+    """
+    lh, rh = person[KP.LEFT_HIP], person[KP.RIGHT_HIP]
+    if not (lh.visible and rh.visible):
+        return None
+    length = torso_length(person)
+    if length is None:
+        return None
+    return abs(lh.x - rh.x) / length
+
+
+def torso_horizontality(person: Person) -> float | None:
+    """몸통(어깨→엉덩이) 선분의 화면상 수평 성분 비율(0~1). 못 재면 None.
+
+    엎드린 자세를 옆에서 찍으면 몸통이 화면을 가로질러 1에 붙고,
+    머리쪽 정면·벽/인클라인 같은 선 자세 변형은 수직 성분이 커져 낮아진다.
+
+    **네 관절(양 어깨·양 엉덩이)이 다 보이는 프레임에서 중점끼리만** 잰다 —
+    경계(0.75)를 도출한 실측이 전부 이 정의다(§7-B: 엎드린 측면 0.849~0.998,
+    정면·선 자세 0.074~0.689). 한쪽만 보이는 프레임의 개별 선분은 분포가
+    달라(근접 원근에서 1.0 근처로 치솟음) 섞으면 중앙값이 오염된다 —
+    RTExR kaggle_25 실측: 중점만 0.705(반려) vs 혼합 0.887(통과 누락).
+    표본이 안 모이면 게이트 ③이 보류되는 것은 다른 지표와 같은 규칙이다.
+    """
+    ls, rs = person[KP.LEFT_SHOULDER], person[KP.RIGHT_SHOULDER]
+    lh, rh = person[KP.LEFT_HIP], person[KP.RIGHT_HIP]
+    if not (ls.visible and rs.visible and lh.visible and rh.visible):
+        return None
+    sx, sy = (ls.x + rs.x) / 2, (ls.y + rs.y) / 2
+    hx, hy = (lh.x + rh.x) / 2, (lh.y + rh.y) / 2
+    length = math.hypot(sx - hx, sy - hy)
+    if length <= 0:
+        return None
+    return abs(sx - hx) / length
+
+
 def is_below_line(start: tuple[float, float], end: tuple[float, float],
                   point: tuple[float, float]) -> bool | None:
     """point가 start–end 직선보다 화면상 아래(y가 큰 쪽)에 있는가.

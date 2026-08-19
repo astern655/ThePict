@@ -10,7 +10,7 @@ from __future__ import annotations
 from ai.analysis.exercises.pushup import PushupAnalyzer
 from ai.analysis.exercises.squat import SquatAnalyzer
 from ai.analysis.feedback import Report
-from ai.engine import _decode_gate, _inference_gate
+from ai.engine import _decode_gate, _inference_gate, _no_reps_gate
 from ai.pose.keypoints import KP, Keypoint
 from tests.test_pushup_logic import CLEAN_REP as PUSHUP_CLEAN_REP
 from tests.test_pushup_logic import _hip_offset_for_deviation, _pushup_person
@@ -42,6 +42,28 @@ def test_unknown_frame_count_is_skipped() -> None:
     _decode_gate(report, read_frames=10, declared_frames=0)
     assert not report.video_issues
     print("✅ 프레임 수 미상 영상은 조기 종료 판정 보류")
+
+
+def test_silent_zero_reps_gets_guidance() -> None:
+    """rep 0인데 아무 안내도 없으면 침묵 실패다 — 마지막 안전망이 안내를 남긴다."""
+    report = Report(exercise="푸시업")
+    _no_reps_gate(report)
+    assert {i.code for i in report.video_issues} == {"no_reps_detected"}
+    print("✅ 무설명 0회 결과 → no_reps_detected 안내")
+
+
+def test_no_reps_gate_stays_silent_when_explained() -> None:
+    """rep이 있거나 다른 안내가 이미 있으면 덧붙이지 않는다(이중 안내 방지)."""
+    counted = Report(exercise="푸시업")
+    counted.rep_count = 3
+    _no_reps_gate(counted)
+    assert not counted.video_issues
+
+    explained = Report(exercise="푸시업")
+    _decode_gate(explained, read_frames=150, declared_frames=300)
+    _no_reps_gate(explained)
+    assert {i.code for i in explained.video_issues} == {"truncated_video"}
+    print("✅ 설명이 이미 있으면 no_reps_detected 침묵")
 
 
 # --- (b) 추론 실패 격리 --------------------------------------------------
@@ -214,12 +236,12 @@ def test_pushup_gap_requires_full_extension_before_counting() -> None:
 
 
 def test_pushup_hidden_ankle_does_not_fabricate_body_line() -> None:
-    """발목이 사라져도 무릎으로 대체해 재고, 둘 다 없으면 판정을 보류한다.
+    """발목이 사라져도 무릎으로 대체해 **측정**하고, 둘 다 없으면 기록하지 않는다.
 
-    푸시업은 발이 프레임을 벗어나기 쉬워서, 이 대체가 조용히 틀린 값을 내면
-    안 된다. 무릎도 없으면 rep은 세되 몸통 결함은 붙이지 않는다.
+    몸통 이탈은 측정 전용으로 강등됐지만(docs/PUSHUP_TUNING.md §9) 대체 측정의
+    보증은 유지돼야 한다 — 조용히 틀린 값을 기록하면 재개 근거 데이터가 오염된다.
     """
-    offset = _hip_offset_for_deviation(30.0)  # ERROR급으로 꺾인 몸통
+    offset = _hip_offset_for_deviation(30.0)  # 예전 기준으론 ERROR였을 크기
 
     with_knee = PushupAnalyzer(fps=30.0)
     without_legs = PushupAnalyzer(fps=30.0)
@@ -235,20 +257,28 @@ def test_pushup_hidden_ankle_does_not_fabricate_body_line() -> None:
     knee_report = with_knee.finalize()
     legless_report = without_legs.finalize()
 
+    # 몸통은 판정하지 않으므로 어느 쪽도 몸통 코드가 없어야 한다
     knee_codes = {i.code for i in knee_report.issues_for_rep(1)}
-    assert "excessive_body_line_break" in knee_codes, f"무릎 대체 실패: {knee_codes}"
+    assert not (knee_codes & {"body_line_break", "excessive_body_line_break"}), knee_codes
+    # 무릎 대체 측정은 기록에 남는다
+    knee_record = knee_report.rep_record(1)
+    assert knee_record.bottom_body_line_dev is not None, "무릎 대체 측정 실패"
+    assert knee_record.bottom_body_line_dev > 25.0
 
     assert legless_report.rep_count == 1, "팔꿈치는 보이는데 rep을 놓쳤다"
     legless_codes = {i.code for i in legless_report.issues_for_rep(1)}
     assert not (legless_codes - {"good_depth"}), f"못 잰 몸통을 판정했다: {legless_codes}"
     assert legless_report.rep_record(1).bottom_body_line_dev is None
-    print("✅ 발목 유실 시 무릎으로 대체, 다리가 다 없으면 판정 보류")
+    assert legless_report.rep_record(1).top_body_line_dev is None
+    print("✅ 발목 유실 시 무릎으로 대체 측정, 다리가 다 없으면 기록하지 않음")
 
 
 if __name__ == "__main__":
     test_truncated_video_is_reported()
     test_full_read_is_silent()
     test_unknown_frame_count_is_skipped()
+    test_silent_zero_reps_gets_guidance()
+    test_no_reps_gate_stays_silent_when_explained()
     test_inference_failures_reported()
     test_rare_inference_failure_is_silent()
     test_short_gap_is_tolerated()

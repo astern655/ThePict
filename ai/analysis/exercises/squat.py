@@ -31,6 +31,7 @@ from ai.analysis.landmarks import (
 from ai.config import (
     SQUAT_ANGLE_SMOOTH_WINDOW,
     SQUAT_FEMUR_BOTTOM_WINDOW,
+    SQUAT_FEMUR_ELEVATION_BORDERLINE,
     SQUAT_FEMUR_ELEVATION_SEVERE,
     SQUAT_FEMUR_ELEVATION_WARN,
     SQUAT_GOOD_DEPTH_ANGLE,
@@ -116,6 +117,15 @@ def check_depth_femur(femur_elevation: float, rep: int) -> Issue:
             message="깊이가 조금 모자랍니다. 이번 회차는 허벅지가 바닥과 수평이 될 "
                     "때까지 더 앉으세요.",
             measured=measured, threshold=SQUAT_FEMUR_ELEVATION_WARN,
+        )
+    if measured > SQUAT_FEMUR_ELEVATION_BORDERLINE:
+        # 경계 구간: 판정(GOOD)은 낮추지 않되 안내는 남긴다. 탐지 재현율을 위한
+        # 낮은 비용의 신호다(근거: ai/config.py의 BORDERLINE 주석).
+        return Issue(
+            rep_index=rep, code="borderline_depth", severity=Severity.GOOD,
+            message="깊이가 기준에 살짝 걸칩니다. 다음 회차는 조금만 더 앉으면 "
+                    "확실합니다.",
+            measured=measured, threshold=SQUAT_FEMUR_ELEVATION_BORDERLINE,
         )
     return Issue(
         rep_index=rep, code="good_depth", severity=Severity.GOOD,

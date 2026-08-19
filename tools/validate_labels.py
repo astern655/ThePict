@@ -66,7 +66,12 @@ EXERCISE_SCHEMA: dict[str, dict] = {
 }
 DEFAULT_EXERCISE = "squat"
 
-VIDEO_CODES = {"partial_reps", "low_detection", "not_side_view"}
+VIDEO_CODES = {"partial_reps", "low_detection", "not_side_view", "ended_mid_rep",
+               "body_line_unverified", "no_reps_detected",
+               "tracking_gap", "truncated_video",
+               # 푸시업 몸통 캘리브레이션 구간(첫 dip 이전 top)이 없어 몸통 판정을
+               # 보류했다는 안내. 영상이 동작 중에 시작하면 나온다.
+               "no_body_baseline"}
 
 VALID_LABELS = {"correct", "needs_work", "incorrect"}
 REQUIRED_VIEW = "side"  # 두 운동 모두 측면 촬영만 받는다
@@ -114,20 +119,25 @@ def check_label_file(entries: list[dict], exercise: str = DEFAULT_EXERCISE) -> l
                 f"[{vid}] exercise가 '{declared}'인데 '{exercise}'로 검사하고 있습니다."
             )
 
-        if entry.get("view") != REQUIRED_VIEW:
+        # view와 not_side_view 기대는 짝으로 일관돼야 한다.
+        # 측면(side) 영상이 반려를 기대하거나, 비측면 영상이 반려 없이 통과를
+        # 기대하면 라벨이 자기모순이다. (2026-08-17 게이트 강화로 비측면·변형
+        # 영상도 '반려를 기대하는 라벨'로 스위트에 남길 수 있게 됐다)
+        expects_reject = "not_side_view" in entry.get("expected_video_codes", [])
+        if entry.get("view") == REQUIRED_VIEW and expects_reject:
             problems.append(
-                f"[{vid}] view가 '{entry.get('view')}'입니다. "
-                f"스쿼트는 측면 촬영만 분석하므로 '{REQUIRED_VIEW}'여야 합니다."
+                f"[{vid}] view가 '{REQUIRED_VIEW}'인데 not_side_view 반려를 "
+                f"기대하고 있습니다. 실제로 측면이 아니라면 view를 고치세요."
+            )
+        if entry.get("view") != REQUIRED_VIEW and not expects_reject:
+            problems.append(
+                f"[{vid}] view가 '{entry.get('view')}'인데 not_side_view 반려를 "
+                f"기대하지 않습니다. 측면이 아니면 반려가 정상 동작입니다."
             )
 
         bad_video_codes = set(entry.get("expected_video_codes", [])) - VIDEO_CODES
         if bad_video_codes:
             problems.append(f"[{vid}] 알 수 없는 영상 코드: {sorted(bad_video_codes)}")
-        if "not_side_view" in entry.get("expected_video_codes", []):
-            problems.append(
-                f"[{vid}] 측면 영상만 넣기로 했는데 not_side_view를 기대하고 있습니다. "
-                f"영상이 실제로 측면이 아니라면 데이터셋에서 빼세요."
-            )
 
         reps = entry.get("expected_reps", [])
         if len(reps) != entry.get("expected_rep_count"):

@@ -45,9 +45,13 @@ LABEL_NAMES = {
     5: "front_bent",
     10: "correct_variant",
 }
+# Plank 라벨(공개 코드의 map_label: [1, 7, 8]). 논문의 지시 오류는
+# Arched back(허리 처짐)·Hunched back(등 솟음)이며, 숫자 대응은 출력의
+# 방향 부호(엉덩이가 어깨-발목 선의 아래=처짐/위=솟음)로 검증한다.
+PLANK_LABEL_NAMES = {1: "correct", 7: "arched_back", 8: "hunched_back"}
 
 
-def load_sequences(path: Path) -> dict[tuple, np.ndarray]:
+def load_sequences(path: Path, action: str = "SQUAT") -> dict[tuple, np.ndarray]:
     """(sub, lab, rep) -> (T, 3, 25) 프레임 시퀀스."""
     with path.open("rb") as fh:
         data = pickle.load(fh)
@@ -56,13 +60,43 @@ def load_sequences(path: Path) -> dict[tuple, np.ndarray]:
     seqs: dict[tuple, list] = defaultdict(list)
     for row, pose in zip(labels, poses):
         act, sub, lab, rep, frame = (str(v) for v in row)
-        if act != "SQUAT":
+        if act != action:
             continue
         seqs[(sub, int(lab), int(rep))].append((int(frame), pose))
     return {
         key: np.stack([p for _, p in sorted(frames)])
         for key, frames in seqs.items()
     }
+
+
+def torso_shin_gap_at_bottom(arr: np.ndarray) -> float:
+    """최저점(무릎각 최소 프레임)의 |상체 기울기 − 정강이 기울기| (도).
+
+    ⚠️ EC3D 모캡은 프레임 방향이 **상체 기준으로 정규화**되어 있다(정상 딥스쿼트
+    최저점의 절대 상체 기울기가 전 구간 0~1°로 나옴 — 물리적으로 불가능).
+    따라서 절대각·부호는 쓸 수 없고, 회전 불변량인 **두 선분 사이 각의 크기**만
+    유효하다. 스쿼트 최저점에서 큰 어긋남의 실제 방향은 전방 숙임이다
+    (라벨 5가 지시된 front bend이고, 상체가 정강이보다 뒤로 눕는 자세는
+    최저점에서 물리적으로 유지 불가). 프로덕션 지표(부호 있는 상체−정강이,
+    ai/analysis/exercises/squat.py)의 크기 성분과 대응된다.
+    """
+    frames = []
+    for pts3 in arr.transpose(0, 2, 1):
+        side = project_side(pts3)
+        knee = np.nanmean([
+            angle_2d(side[HIP_L], side[KNEE_L], side[ANKLE_L]),
+            angle_2d(side[HIP_R], side[KNEE_R], side[ANKLE_R]),
+        ])
+        frames.append((knee, side))
+    knees = np.array([k for k, _ in frames])
+    _, side = frames[int(np.nanargmin(knees))]
+    mid_sh = (side[SHOULDER_L] + side[SHOULDER_R]) / 2
+    mid_hip = (side[HIP_L] + side[HIP_R]) / 2
+    knee_mid = (side[KNEE_L] + side[KNEE_R]) / 2
+    ankle_mid = (side[ANKLE_L] + side[ANKLE_R]) / 2
+    torso = math.degrees(math.atan2((mid_sh - mid_hip)[0], (mid_sh - mid_hip)[1]))
+    shin = math.degrees(math.atan2((knee_mid - ankle_mid)[0], (knee_mid - ankle_mid)[1]))
+    return abs(torso - shin)
 
 
 def verify_skeleton(seqs: dict[tuple, np.ndarray]) -> dict:
@@ -166,6 +200,39 @@ def measure_sequence(arr: np.ndarray) -> dict:
     }
 
 
+def measure_plank_sequence(arr: np.ndarray) -> dict:
+    """플랭크 시퀀스의 몸통 일직선 측정값.
+
+    푸시업 `check_body_line`과 같은 정의: 이탈각 = 180 − (어깨-엉덩이-발목각).
+    방향은 부호로 남긴다(음수 = 엉덩이가 어깨-발목 선 **아래** = 허리 처짐).
+    플랭크는 정적 유지 동작이라 프레임 중앙값을 시퀀스 대표값으로 쓴다.
+    """
+    devs, signed = [], []
+    for pts3 in arr.transpose(0, 2, 1):
+        side = project_side(pts3)
+        sh = (side[SHOULDER_L] + side[SHOULDER_R]) / 2
+        hip = (side[HIP_L] + side[HIP_R]) / 2
+        ank = (side[ANKLE_L] + side[ANKLE_R]) / 2
+        dev = 180.0 - angle_2d(sh, hip, ank)
+        if not math.isfinite(dev):
+            continue
+        # 방향: 어깨-발목 선의 같은 전방 위치에서 엉덩이의 수직 편차(위=양수)
+        vx = ank[0] - sh[0]
+        if abs(vx) < 1e-9:
+            continue
+        t = (hip[0] - sh[0]) / vx
+        line_v = sh[1] + t * (ank[1] - sh[1])
+        above = hip[1] > line_v          # 투영의 [:,1]은 위가 양수
+        devs.append(dev)
+        signed.append(dev if above else -dev)
+    return {
+        "median_body_dev": round(float(np.median(devs)), 2) if devs else float("nan"),
+        "median_signed_dev": round(float(np.median(signed)), 2) if signed else float("nan"),
+        "max_body_dev": round(float(np.max(devs)), 2) if devs else float("nan"),
+        "frames": len(devs),
+    }
+
+
 def confusion(truth: Iterable[bool], pred: Iterable[bool]) -> dict:
     pairs = list(zip(truth, pred))
     tp = sum(t and p for t, p in pairs)
@@ -259,6 +326,7 @@ def main() -> int:
             # (비율이 높게 유지 = 끝까지 엉덩이가 안 내려감).
             "knee": m["min_knee_angle"], "hip": m["min_hip_ratio"],
             "span": m["min_hip_in_span"],
+            "torso_gap": round(torso_shin_gap_at_bottom(arr), 2),
             **m,
         })
 
@@ -274,6 +342,77 @@ def main() -> int:
             "ankle_width_median": round(float(np.median([g["max_ankle_width"] for g in grp])), 3),
         }
 
+    # --- 스쿼트 상체(전방 숙임) 규칙 검증: front_bent(5) vs 정상(1,10) --------
+    # 프로덕션 SQUAT_TORSO_SHIN_DIFF_WARN(30°)의 첫 결함-양성 검증. 정규화 탓에
+    # |차|만 유효하다(torso_shin_gap_at_bottom의 주석). 모캡→YOLO/COCO 전이
+    # 주의는 깊이 지표와 동일 — 임계값 숫자 자체를 여기서 가져오지 말 것.
+    torso_ok = [r for r in rows if r["label"] in (1, 10)]
+    torso_bad = [r for r in rows if r["label"] == 5]
+    wins = sum(
+        1.0 if b["torso_gap"] > o["torso_gap"] else 0.5 if b["torso_gap"] == o["torso_gap"] else 0.0
+        for b in torso_bad for o in torso_ok
+    )
+    torso_thresholds = {}
+    for th in (15.0, 20.0, 25.0, 30.0):
+        torso_thresholds[f"|gap|>{th:.0f}"] = {
+            "front_bent_recall": f"{sum(1 for r in torso_bad if r['torso_gap'] > th)}/{len(torso_bad)}",
+            "correct_fp": f"{sum(1 for r in torso_ok if r['torso_gap'] > th)}/{len(torso_ok)}",
+            "other_defect_over": {
+                LABEL_NAMES[l]: sum(1 for r in rows if r["label"] == l and r["torso_gap"] > th)
+                for l in (2, 3, 4)
+            },
+        }
+    squat_torso = {
+        "purpose": "상체-정강이 상대각 지표의 결함 양성(지시된 전방 숙임) 판별력 검증. "
+                   "LLM-FMS r01은 '상체가 덜 기움' 방향이 지배적이라 전방 숙임 검증이 "
+                   "불가능했다(docs/SQUAT_TUNING.md §상체).",
+        "orientation_note": "모캡이 상체 방향을 정규화해 절대각·부호 사용 불가 — |차|만 유효",
+        "auc_abs_gap": round(wins / (len(torso_bad) * len(torso_ok)), 3) if torso_bad and torso_ok else None,
+        "correct_gap_median_max": [
+            round(float(np.median([r["torso_gap"] for r in torso_ok])), 1),
+            round(max(r["torso_gap"] for r in torso_ok), 1),
+        ],
+        "front_bent_gap_median_range": [
+            round(float(np.median([r["torso_gap"] for r in torso_bad])), 1),
+            round(min(r["torso_gap"] for r in torso_bad), 1),
+            round(max(r["torso_gap"] for r in torso_bad), 1),
+        ],
+        "thresholds": torso_thresholds,
+        "per_subject_median": {
+            sub: {
+                "correct": round(float(np.median(
+                    [r["torso_gap"] for r in torso_ok if r["subject"] == sub])), 1),
+                "front_bent": round(float(np.median(
+                    [r["torso_gap"] for r in torso_bad if r["subject"] == sub])), 1),
+            }
+            for sub in sorted({r["subject"] for r in torso_bad})
+        },
+    }
+
+    # --- Plank: 푸시업 몸통 일직선 규칙의 독립 검증 -------------------------
+    plank_rows = []
+    for (sub, lab, rep), arr in sorted(load_sequences(args.data, "Plank").items()):
+        m = measure_plank_sequence(arr)
+        plank_rows.append({
+            "subject": sub, "label": lab,
+            "label_name": PLANK_LABEL_NAMES.get(lab, f"unknown_{lab}"),
+            "rep": rep, "truth": lab != 1,
+            # 판정값: 이탈각 중앙값(클수록 결함) — 푸시업 WARN 15°/SEVERE 25°와 동일 지표
+            "dev": m["median_body_dev"], **m,
+        })
+    plank_label_stats = {}
+    for lab in sorted({r["label"] for r in plank_rows}):
+        grp = [r for r in plank_rows if r["label"] == lab]
+        plank_label_stats[f"{lab}:{PLANK_LABEL_NAMES.get(lab, '?')}"] = {
+            "sequences": len(grp),
+            "median_dev": round(float(np.median([g["median_body_dev"] for g in grp])), 1),
+            "median_signed_dev": round(float(np.median([g["median_signed_dev"] for g in grp])), 1),
+        }
+    plank_current = confusion(
+        (r["truth"] for r in plank_rows),
+        (r["dev"] > 15.0 for r in plank_rows),  # 현재 운영 WARN 경계
+    )
+
     report = {
         "dataset": {
             "name": "EC3D (3D Pose Based Feedback for Physical Exercises, ACCV 2022)",
@@ -281,6 +420,17 @@ def main() -> int:
             "subjects": sorted({r["subject"] for r in rows}),
             "depth_label_hypothesis": f"{SQUAT_DEPTH_LABEL} == not_low_enough",
         },
+        "plank_body_line": {
+            "purpose": "푸시업 몸통 일직선 규칙(어깨-엉덩이-발목 이탈각)의 독립 검증. "
+                       "로컬 푸시업 라벨에는 몸통 결함 양성이 0이라 여기서만 재현율을 잴 수 있다.",
+            "sequences": len(plank_rows),
+            "label_geometry": plank_label_stats,
+            "auc": auc(plank_rows, "dev"),
+            "metrics_at_current_warn_15deg": plank_current,
+            "recall_at_spec": best_recall_at_spec(plank_rows, "dev", args.min_spec),
+            "leave_one_subject_out": loso_cv(plank_rows, "dev", args.min_spec),
+        },
+        "squat_torso": squat_torso,
         "skeleton_bone_length_check": skeleton_check,
         "label_geometry": label_stats,
         "auc": {

@@ -80,6 +80,10 @@ class AngleRepAnalyzer(ExerciseAnalyzer):
     up_angle: float            # 이보다 커지면 '올라옴(UP)' → rep 완료
     partial_dip_angle: float   # DOWN까지는 못 갔지만 이 아래로 내려갔으면 부분 반복
     smooth_window: int         # 중앙값 필터 윈도(1이면 비활성)
+    # rep 인정 깊이 가드(도). DOWN→UP을 완주했더라도 최저각이
+    # (down_angle − 이 값)까지 내려가지 못한 dip은 rep 대신 부분 반복으로 센다.
+    # 임계선을 살짝 스치는 가짜 dip(잔떨림·피로 구간) 방어용. 0이면 비활성.
+    rep_prominence: float = 0.0
     # 측면 판정 경계. 자세(선 자세 vs 엎드린 자세)에 따라 같은 지표의 정상 범위가
     # 달라져 운동별로 다시 정할 수 있게 열어 둔다.
     side_view_ratio_max: float = SIDE_VIEW_RATIO_MAX
@@ -210,10 +214,15 @@ class AngleRepAnalyzer(ExerciseAnalyzer):
                     self.report.partial_rep_count += 1
                 self._reset_rep_tracking()
         elif self.state == "DOWN" and angle > self.up_angle:
-            # DOWN → UP 전환 = 반복 1회 완료
+            # DOWN → UP 전환 = 반복 1회 완료 후보. 깊이 가드를 통과해야 rep이다.
             self.state = "UP"
-            self.report.rep_count += 1
-            self._finish_rep(self.report.rep_count, frame_index)
+            if self.min_angle_in_rep <= self.down_angle - self.rep_prominence:
+                self.report.rep_count += 1
+                self._finish_rep(self.report.rep_count, frame_index)
+            else:
+                # DOWN 임계를 스치기만 한 얕은 dip — 조용히 버리지 않고
+                # 부분 반복으로 집계해 사용자에게 알린다.
+                self.report.partial_rep_count += 1
             self._reset_rep_tracking()
 
     def _reset_rep_tracking(self) -> None:
@@ -244,16 +253,26 @@ class AngleRepAnalyzer(ExerciseAnalyzer):
         for issue in self.check_form(rep, self._bottom_person, self.min_angle_in_rep):
             self.report.add(issue)
 
+    def _side_view_issue(self) -> Issue | None:
+        """측면 촬영 검증. 표본이 충분한데 어깨가 넓게 벌어져 보이면 정면 촬영이다.
+
+        운동별로 추가 지표가 필요하면 오버라이드한다(푸시업은 3중 게이트).
+        """
+        if len(self._view_ratios) < SIDE_VIEW_MIN_SAMPLES:
+            return None
+        ratio = statistics.median(self._view_ratios)
+        if ratio > self.side_view_ratio_max:
+            return Issue(
+                rep_index=0, code="not_side_view", severity=Severity.ERROR,
+                message=self.not_side_view_message,
+                measured=round(ratio, 2), threshold=self.side_view_ratio_max,
+            )
+        return None
+
     def finalize(self) -> Report:
-        # 측면 촬영 검증: 표본이 충분한데 어깨가 넓게 벌어져 보이면 정면 촬영이다.
-        if len(self._view_ratios) >= SIDE_VIEW_MIN_SAMPLES:
-            ratio = statistics.median(self._view_ratios)
-            if ratio > self.side_view_ratio_max:
-                self.report.add_video_issue(Issue(
-                    rep_index=0, code="not_side_view", severity=Severity.ERROR,
-                    message=self.not_side_view_message,
-                    measured=round(ratio, 2), threshold=self.side_view_ratio_max,
-                ))
+        issue = self._side_view_issue()
+        if issue is not None:
+            self.report.add_video_issue(issue)
 
         # 내려간 상태(DOWN)에서 영상이 끝나면 그 rep은 상태기계가 완료를 못 본다.
         # 조용히 버리지 않고, 횟수에서 빠졌음을 안내한다(동작 범위 부족과는 다른 사유).

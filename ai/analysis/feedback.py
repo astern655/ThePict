@@ -65,8 +65,9 @@ class Issue:
     # 이 항목을 발생시킨 기준선. measured와 같은 지표·같은 단위여야 한다.
     # (예: torso_lean이면 상체−정강이 차의 WARNING 임계값 30.0)
     # 임계값이 나중에 바뀌어도 저장된 리포트를 그대로 해석할 수 있게 함께 남긴다.
-    # 넘는 쪽이 결함인지 모자란 쪽이 결함인지는 코드마다 다르다. rep 결함(깊이·상체)은
-    # 전부 '초과가 결함'이고, 영상 수준의 low_detection만 '미만이 결함'이다.
+    # 넘는 쪽이 결함인지 모자란 쪽이 결함인지는 코드마다 다르다. rep 결함(깊이·상체·
+    # 몸통 델타)은 전부 '초과가 결함'이고, 영상 수준의 low_detection·no_body_baseline
+    # (캘리브레이션 표본 수 미달)만 '미만이 결함'이다.
     threshold: float | None = None
 
     def to_dict(self) -> dict:
@@ -103,7 +104,11 @@ class RepRecord:
     bottom_torso_incline: float | None = None  # [스쿼트] 상체 기울기(수직 기준, 도)
     bottom_shin_incline: float | None = None   # [스쿼트] 정강이 기울기(수직 기준, 도)
     bottom_torso_shin_diff: float | None = None  # [스쿼트] 상체 − 정강이 (판정 지표)
-    bottom_body_line_dev: float | None = None  # [푸시업] 몸통 일직선 이탈각(도)
+    bottom_body_line_dev: float | None = None  # [푸시업] 최저점 몸통 이탈각(도, 기록 전용)
+    top_body_line_dev: float | None = None     # [푸시업] top 자세 몸통 이탈각(도, 크기)
+    # [푸시업] top 이탈각(부호: +처짐/−솟음)의 기준선 대비 변화량 — 판정 지표.
+    # 기준선(Report.body_line_baseline)이나 이번 rep의 부호 표본이 없으면 None.
+    top_body_line_delta: float | None = None
     start_sec: float | None = None
     bottom_sec: float | None = None
     end_sec: float | None = None
@@ -124,6 +129,8 @@ class RepRecord:
             "bottom_shin_incline": self.bottom_shin_incline,
             "bottom_torso_shin_diff": self.bottom_torso_shin_diff,
             "bottom_body_line_dev": self.bottom_body_line_dev,
+            "top_body_line_dev": self.top_body_line_dev,
+            "top_body_line_delta": self.top_body_line_delta,
             "start_sec": self.start_sec,
             "bottom_sec": self.bottom_sec,
             "end_sec": self.end_sec,
@@ -150,6 +157,9 @@ class Report:
     dropped_rep_count: int = 0     # 추적 끊김으로 폐기한 진행 중 rep 수
     annotated_video_path: str | None = None
     camera_view: str = "side"  # 스쿼트는 측면 촬영만 받는다(항상 "side")
+    # [푸시업] 첫 dip 이전 top 자세에서 잰 몸통 이탈각 기준선(부호: +처짐/−솟음).
+    # 캘리브레이션 구간이 짧아 못 재면 None — rep의 델타 판정도 함께 보류된다.
+    body_line_baseline: float | None = None
 
     def add(self, issue: Issue) -> None:
         self.issues.append(issue)
@@ -266,6 +276,7 @@ class Report:
             "tracking_gap_count": self.tracking_gap_count,
             "dropped_rep_count": self.dropped_rep_count,
             "annotated_video_path": self.annotated_video_path,
+            "body_line_baseline": self.body_line_baseline,
             "issues": [i.to_dict() for i in self.issues],
             "video_issues": [i.to_dict() for i in self.video_issues],
             "reps": [r.to_dict() for r in self.reps],

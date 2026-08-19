@@ -232,11 +232,18 @@ def test_depth_femur_tiers() -> None:
     assert (error.code, error.severity) == ("very_shallow_depth", Severity.ERROR)
     assert len({good.message, warn.message, error.message}) == 3
     # 경계값은 아래 단계에 속한다 (초과일 때만 다음 단계)
-    assert check_depth_femur(30.0, rep=1).code == "good_depth"
     assert check_depth_femur(50.0, rep=1).code == "shallow_depth"
     # 엉덩이가 무릎보다 낮은 깊은 스쿼트(음수 거상각)도 당연히 GOOD
     assert check_depth_femur(-15.0, rep=1).code == "good_depth"
-    print("✅ 대퇴 거상각 깊이 3단계 + 단계별 전용 문구")
+    # 경계(borderline) 구간 (24°, 30°]: 판정은 GOOD이되 안내 코드가 다르다.
+    # 탐지 재현율(어떤 신호든 주는 비율)을 위한 단계다.
+    border = check_depth_femur(27.0, rep=1)
+    assert (border.code, border.severity) == ("borderline_depth", Severity.GOOD)
+    assert border.threshold == 24.0
+    assert check_depth_femur(30.0, rep=1).code == "borderline_depth"
+    assert check_depth_femur(24.0, rep=1).code == "good_depth"
+    assert border.message != check_depth_femur(20.0, rep=1).message
+    print("✅ 대퇴 거상각 깊이 4단계(경계 포함) + 단계별 전용 문구")
 
 
 def test_depth_knee_fallback_tiers() -> None:
@@ -354,6 +361,25 @@ def test_bottom_measurements_none_when_legs_hidden() -> None:
     print("✅ 못 잰 측정값을 지어내지 않음")
 
 
+def test_borderline_depth_does_not_downgrade_verdict() -> None:
+    """경계 구간 rep은 안내는 남기되 판정은 '올바름'을 유지한다.
+
+    최저점 무릎각 117°(정강이 수직 → 거상각 27~30° 부근)의 rep: 경계 안내
+    코드가 붙지만 severity가 GOOD이라 rep 판정을 낮추지 않는다.
+    """
+    seq = [170, 170, 160, 150, 140, 130, 120, 117, 117, 120, 130, 140, 150, 165, 175, 175]
+    analyzer = SquatAnalyzer()
+    for i, ang in enumerate(seq):
+        analyzer.update(_upright_person(ang), i)
+    report = analyzer.finalize()
+    assert report.rep_count == 1
+    codes = {i.code for i in report.issues_for_rep(1)}
+    assert "borderline_depth" in codes, f"경계 안내가 없음: {codes}"
+    assert "shallow_depth" not in codes
+    assert report.rep_verdict(1) is RepVerdict.CORRECT, "경계 안내가 판정을 낮췄다"
+    print("✅ 경계 구간 → 안내는 남고 판정은 '올바름' 유지")
+
+
 def test_bottom_femur_smoothing_rejects_spike() -> None:
     """최저점 부근의 단일 프레임 스파이크가 깊이 판정을 뒤집지 못한다.
 
@@ -393,11 +419,14 @@ def test_issue_carries_threshold() -> None:
 
 def test_boundary_uses_displayed_value() -> None:
     """판정은 반올림된 표시값으로 내린다 → '측정값=기준값인데 결함' 모순이 없다."""
-    # 대퇴 거상각: 원시 30.04°는 30.0°으로 표시되므로 GOOD, 30.06°은 WARNING
-    assert check_depth_femur(30.04, rep=1).code == "good_depth"
+    # 대퇴 거상각: 원시 30.04°는 30.0°으로 표시되므로 WARNING이 아니라 경계 안내
+    assert check_depth_femur(30.04, rep=1).code == "borderline_depth"
     assert check_depth_femur(30.06, rep=1).code == "shallow_depth"
     assert check_depth_femur(50.04, rep=1).code == "shallow_depth"
     assert check_depth_femur(50.06, rep=1).code == "very_shallow_depth"
+    # 경계 하한도 같은 규칙: 24.04°는 24.0°으로 표시되므로 아직 GOOD
+    assert check_depth_femur(24.04, rep=1).code == "good_depth"
+    assert check_depth_femur(24.06, rep=1).code == "borderline_depth"
     # 무릎각 예비 기준도 같은 규칙: 원시 90.04°는 90.0°으로 표시되므로 GOOD
     assert check_depth(90.04, rep=1).code == "good_depth"
     assert check_depth(90.06, rep=1).code == "shallow_depth"
@@ -457,6 +486,7 @@ if __name__ == "__main__":
     test_bottom_measurements_recorded_even_when_correct()
     test_bottom_measurement_matches_issue_value()
     test_bottom_measurements_none_when_legs_hidden()
+    test_borderline_depth_does_not_downgrade_verdict()
     test_bottom_femur_smoothing_rejects_spike()
     test_issue_carries_threshold()
     test_boundary_uses_displayed_value()

@@ -1,0 +1,244 @@
+[
+  {
+    "id": "clip_10280888",
+    "exercise": "pushup",
+    "video_path": "data/videos/pushup_eval/clip_10280888.mp4",
+    "view": "side",
+    "expected_rep_count": 3,
+    "expected_partial_rep_count": 0,
+    "expected_video_codes": ["ended_mid_rep", "no_body_baseline"],
+    "notes": "영상 끝(12초 크롭)이 다음 rep 하강 도중에 잘림 — 끝 장면 육안 확인(2026-08-06). 구 rep 파라미터는 이 하강을 감지하지 못했음",
+    "expected_reps": [
+      {"rep_index": 1, "label": "correct", "feedback_codes": []},
+      {"rep_index": 2, "label": "correct", "feedback_codes": []},
+      {"rep_index": 3, "label": "correct", "feedback_codes": []}
+    ]
+  },
+  {
+    "id": "clip_10483840",
+    "exercise": "pushup",
+    "video_path": "data/videos/pushup_eval/clip_10483840.mp4",
+    "view": "side",
+    "expected_rep_count": 3,
+    "expected_partial_rep_count": 0,
+    "expected_video_codes": ["no_body_baseline"],
+    "expected_reps": [
+      {"rep_index": 1, "label": "correct", "feedback_codes": []},
+      {"rep_index": 2, "label": "correct", "feedback_codes": []},
+      {"rep_index": 3, "label": "correct", "feedback_codes": []}
+    ]
+  },
+  {
+    "id": "clip_27727791",
+    "exercise": "pushup",
+    "video_path": "data/videos/pushup_eval/clip_27727791.mp4",
+    "view": "side",
+    "expected_rep_count": 3,
+    "expected_partial_rep_count": 0,
+    "expected_video_codes": ["no_body_baseline"],
+    "notes": "rep1은 인물이 프레임 좌측으로 일부 잘림(최저점 기준 깊이·몸통은 판독 가능). 2026-08-06 rep 파라미터 갱신으로 기존 rep1(두 하강이 병합돼 있던 것)이 rep1+rep2로 분리됨 — 인간 계수 정답(pushup_rep_labels.json)도 3회. rep2는 분리 후 최저점 원시 프레임(f60, 원시 96.2도) 육안 라벨: 팔꿈치가 어중간하게만 굽고 가슴이 바닥에서 멀어 깊이 부족. 엔진 측정을 본 상태의 라벨임(비블라인드 주의)",
+    "expected_reps": [
+      {"rep_index": 1, "label": "correct", "feedback_codes": []},
+      {"rep_index": 2, "label": "needs_work", "feedback_codes": ["shallow_depth"]},
+      {"rep_index": 3, "label": "correct", "feedback_codes": []}
+    ]
+  },
+  {
+    "id": "clip_4742661",
+    "exercise": "pushup",
+    "video_path": "data/videos/pushup_eval/clip_4742661.mp4",
+    "view": "side",
+    "expected_rep_count": 1,
+    "expected_partial_rep_count": 0,
+    "expected_video_codes": ["ended_mid_rep"],
+    "notes": "영상 끝이 낮은 플랭크/하강 자세에서 잘림 — 끝 장면 육안 확인(2026-08-06)",
+    "expected_reps": [
+      {"rep_index": 1, "label": "correct", "feedback_codes": []}
+    ]
+  },
+  {
+    "id": "clip_4804784",
+    "exercise": "pushup",
+    "video_path": "data/videos/pushup_eval/clip_4804784.mp4",
+    "view": "side",
+    "expected_rep_count": 3,
+    "expected_partial_rep_count": 0,
+    "expected_video_codes": ["no_body_baseline"],
+    "expected_reps": [
+      {"rep_index": 1, "label": "correct", "feedback_codes": []},
+      {"rep_index": 2, "label": "correct", "feedback_codes": []},
+      {"rep_index": 3, "label": "correct", "feedback_codes": []}
+    ]
+  },
+  {
+    "id": "clip_4804794",
+    "exercise": "pushup",
+    "video_path": "data/videos/pushup_eval/clip_4804794.mp4",
+    "view": "side",
+    "expected_rep_count": 3,
+    "expected_partial_rep_count": 0,
+    "expected_video_codes": ["body_line_unverified"],
+    "notes": "앞사선 원근으로 발목이 무릎 위로 투영되는 영상(과반 93%) — 2026-08-17 끝점 다수결이 무릎 모드를 택해 몸통 델타 판정이 보류된다. 발목 기준으로는 판정이 정상 동작했던 영상이라 보류는 보수적 손해지만, 같은 규칙이 발 든 무릎 푸시업(MM-Fit w19)의 오탐 연쇄를 막는다 — 오탐보다 보류가 낫다는 원칙으로 수용(PUSHUP_TUNING.md §9 4차)",
+    "expected_reps": [
+      {"rep_index": 1, "label": "correct", "feedback_codes": []},
+      {"rep_index": 2, "label": "correct", "feedback_codes": []},
+      {"rep_index": 3, "label": "correct", "feedback_codes": []}
+    ]
+  },
+  {
+    "id": "clip_4945123",
+    "exercise": "pushup",
+    "video_path": "data/videos/pushup_eval/clip_4945123.mp4",
+    "view": "side",
+    "expected_rep_count": 5,
+    "expected_partial_rep_count": 0,
+    "expected_video_codes": [],
+    "notes": "rep1·rep5는 엉덩이가 경미하게 솟음(교정 대상 수준은 아님)",
+    "expected_reps": [
+      {"rep_index": 1, "label": "correct", "feedback_codes": []},
+      {"rep_index": 2, "label": "correct", "feedback_codes": []},
+      {"rep_index": 3, "label": "correct", "feedback_codes": []},
+      {"rep_index": 4, "label": "correct", "feedback_codes": []},
+      {"rep_index": 5, "label": "correct", "feedback_codes": []}
+    ]
+  },
+  {
+    "id": "clip_4964649",
+    "exercise": "pushup",
+    "video_path": "data/videos/pushup_eval/clip_4964649.mp4",
+    "view": "side",
+    "expected_rep_count": 3,
+    "expected_partial_rep_count": 0,
+    "expected_video_codes": ["no_body_baseline"],
+    "expected_reps": [
+      {"rep_index": 1, "label": "correct", "feedback_codes": []},
+      {"rep_index": 2, "label": "correct", "feedback_codes": []},
+      {"rep_index": 3, "label": "correct", "feedback_codes": []}
+    ]
+  },
+  {
+    "id": "clip_4964650",
+    "exercise": "pushup",
+    "video_path": "data/videos/pushup_eval/clip_4964650.mp4",
+    "view": "side",
+    "expected_rep_count": 3,
+    "expected_partial_rep_count": 0,
+    "expected_video_codes": ["ended_mid_rep", "no_body_baseline"],
+    "notes": "원본 해상도 재검수로 rep1↔rep2 라벨을 교정(rep1이 가슴이 바닥에서 먼 얕은 rep) / 영상 끝이 최저점 부근 자세에서 잘림 — 끝 장면 육안 확인(2026-08-06)",
+    "expected_reps": [
+      {"rep_index": 1, "label": "needs_work", "feedback_codes": ["shallow_depth"]},
+      {"rep_index": 2, "label": "correct", "feedback_codes": []},
+      {"rep_index": 3, "label": "correct", "feedback_codes": []}
+    ]
+  },
+  {
+    "id": "clip_5310934",
+    "exercise": "pushup",
+    "video_path": "data/videos/pushup_eval/clip_5310934.mp4",
+    "view": "incline_rear_oblique",
+    "expected_rep_count": 3,
+    "expected_partial_rep_count": 0,
+    "expected_video_codes": ["ended_mid_rep", "no_body_baseline", "not_side_view"],
+    "notes": "인클라인(난간)·후측면 카메라. 2026-08-17 게이트 강화로 not_side_view 반려 대상이 됨(몸통 수평도 0.43 < 0.75 — 선 자세 변형은 바닥 푸시업 규칙의 적용 범위 밖이라 재촬영 안내가 제품 의도에 부합). 카운트 자체는 여전히 정확해야 한다(반려는 안내이지 분석 중단이 아님). / 원본 해상도 재검수로 r1·r2를 정상으로 교정(팔이 충분히 굽었고 가슴이 난간에 근접), r3만 얕음 유지 / 영상 끝은 운동 후 난간에 기대 쉬는 자세인데 팔꿈치가 굽어 하강으로 읽힘 — WARNING급 오경보 허용(각도만으로는 다음 인클라인 rep 시작과 구분 불가, 2026-08-06)",
+    "expected_reps": [
+      {"rep_index": 1, "label": "correct", "feedback_codes": []},
+      {"rep_index": 2, "label": "correct", "feedback_codes": []},
+      {"rep_index": 3, "label": "needs_work", "feedback_codes": ["shallow_depth"]}
+    ]
+  },
+  {
+    "id": "clip_5802475",
+    "exercise": "pushup",
+    "video_path": "data/videos/pushup_eval/clip_5802475.mp4",
+    "view": "side",
+    "expected_rep_count": 6,
+    "expected_partial_rep_count": 0,
+    "expected_video_codes": ["ended_mid_rep", "no_body_baseline"],
+    "notes": "영상 끝이 7번째 rep 최저점에서 잘림(계수 정답 7 vs 엔진 6의 원인 — 끝 장면 육안 확인, 2026-08-06). 미완성 rep을 세지 않고 ended_mid_rep으로 안내하는 것이 설계 의도이므로 이 파일의 기대 카운트는 6",
+    "expected_reps": [
+      {"rep_index": 1, "label": "correct", "feedback_codes": []},
+      {"rep_index": 2, "label": "correct", "feedback_codes": []},
+      {"rep_index": 3, "label": "correct", "feedback_codes": []},
+      {"rep_index": 4, "label": "correct", "feedback_codes": []},
+      {"rep_index": 5, "label": "correct", "feedback_codes": []},
+      {"rep_index": 6, "label": "correct", "feedback_codes": []}
+    ]
+  },
+  {
+    "id": "clip_6022762",
+    "exercise": "pushup",
+    "video_path": "data/videos/pushup_eval/clip_6022762.mp4",
+    "view": "side",
+    "expected_rep_count": 3,
+    "expected_partial_rep_count": 0,
+    "expected_video_codes": ["ended_mid_rep"],
+    "notes": "의족 사용자 — 발목 키포인트가 특이할 수 있음(몸통 판정은 무릎 대체 경로 확인용으로 가치) / 영상 끝이 내려간 자세에서 잘림 — 끝 장면 육안 확인(2026-08-06)",
+    "expected_reps": [
+      {"rep_index": 1, "label": "correct", "feedback_codes": []},
+      {"rep_index": 2, "label": "correct", "feedback_codes": []},
+      {"rep_index": 3, "label": "correct", "feedback_codes": []}
+    ]
+  },
+  {
+    "id": "clip_6970145",
+    "exercise": "pushup",
+    "video_path": "data/videos/pushup_eval/clip_6970145.mp4",
+    "view": "side",
+    "expected_rep_count": 4,
+    "expected_partial_rep_count": 0,
+    "expected_video_codes": ["no_body_baseline"],
+    "notes": "인클라인(테이블). 원본 해상도 재검수: r1·r2는 팔꿈치가 얕게만 굽음(얕음), r3·r4는 충분히 굽음(정상)으로 교정",
+    "expected_reps": [
+      {"rep_index": 1, "label": "needs_work", "feedback_codes": ["shallow_depth"]},
+      {"rep_index": 2, "label": "needs_work", "feedback_codes": ["shallow_depth"]},
+      {"rep_index": 3, "label": "correct", "feedback_codes": []},
+      {"rep_index": 4, "label": "correct", "feedback_codes": []}
+    ]
+  },
+  {
+    "id": "clip_7117537",
+    "exercise": "pushup",
+    "video_path": "data/videos/pushup_eval/clip_7117537.mp4",
+    "view": "side",
+    "expected_rep_count": 3,
+    "expected_partial_rep_count": 0,
+    "expected_video_codes": ["ended_mid_rep", "no_body_baseline"],
+    "notes": "영상 끝이 전환 동작(파이크 자세) 도중에 잘림 — 끝 장면 육안 확인(2026-08-06)",
+    "expected_reps": [
+      {"rep_index": 1, "label": "correct", "feedback_codes": []},
+      {"rep_index": 2, "label": "correct", "feedback_codes": []},
+      {"rep_index": 3, "label": "correct", "feedback_codes": []}
+    ]
+  },
+  {
+    "id": "clip_7680354",
+    "exercise": "pushup",
+    "video_path": "data/videos/pushup_eval/clip_7680354.mp4",
+    "view": "side",
+    "expected_rep_count": 5,
+    "expected_partial_rep_count": 0,
+    "expected_video_codes": ["no_body_baseline"],
+    "expected_reps": [
+      {"rep_index": 1, "label": "correct", "feedback_codes": []},
+      {"rep_index": 2, "label": "correct", "feedback_codes": []},
+      {"rep_index": 3, "label": "correct", "feedback_codes": []},
+      {"rep_index": 4, "label": "correct", "feedback_codes": []},
+      {"rep_index": 5, "label": "correct", "feedback_codes": []}
+    ]
+  },
+  {
+    "id": "clip_8343993",
+    "exercise": "pushup",
+    "video_path": "data/videos/pushup_eval/clip_8343993.mp4",
+    "view": "side",
+    "expected_rep_count": 3,
+    "expected_partial_rep_count": 0,
+    "expected_video_codes": [],
+    "notes": "바(철봉) 인클라인. 원본 해상도 재검수: rep2는 rep1과 같은 깊이(정상)로 교정, rep3만 가슴이 바에서 떨어진 얕음 유지",
+    "expected_reps": [
+      {"rep_index": 1, "label": "correct", "feedback_codes": []},
+      {"rep_index": 2, "label": "correct", "feedback_codes": []},
+      {"rep_index": 3, "label": "needs_work", "feedback_codes": ["shallow_depth"]}
+    ]
+  }
+]

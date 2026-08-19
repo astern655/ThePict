@@ -22,9 +22,10 @@ class UnsupportedExercise(ValueError):
 # (기존 pose_eval의 form_score와 같은 0~100 척도라 앱/분석 코드가 그대로 쓴다)
 VERDICT_SCORE = {"correct": 100.0, "needs_work": 70.0, "incorrect": 30.0}
 
-# 깊이 코드는 운동이 공유한다(스쿼트=무릎각, 푸시업=팔꿈치각). rep마다 항상 판정되므로
-# good_depth도 포함된다. 두 번째 축(스쿼트 상체 / 푸시업 몸통)은 결함일 때만 남는다.
-DEPTH_CODES = {"good_depth", "shallow_depth", "very_shallow_depth"}
+# 깊이 코드는 운동이 공유한다(스쿼트=대퇴 거상각, 푸시업=팔꿈치각). rep마다 항상
+# 판정되므로 good_depth도 포함된다. borderline_depth는 판정을 낮추지 않는 경계
+# 안내(스쿼트 전용)다. 두 번째 축(스쿼트 상체 / 푸시업 몸통)은 결함일 때만 남는다.
+DEPTH_CODES = {"good_depth", "borderline_depth", "shallow_depth", "very_shallow_depth"}
 TORSO_CODES = {"torso_lean", "excessive_torso_lean"}
 BODY_LINE_CODES = {"body_line_break", "excessive_body_line_break"}
 
@@ -44,7 +45,7 @@ EXERCISE_CHECKS = {
         "depth_check": "pushup_depth",
         "form_check": "body_line_dev",
         "form_codes": BODY_LINE_CODES,
-        "form_message": "{n}회차에서 몸통이 일직선에서 벗어났습니다",
+        "form_message": "{n}회차에서 시작 자세보다 몸통이 처지거나 솟았습니다",
     },
 }
 

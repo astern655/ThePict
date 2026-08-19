@@ -82,6 +82,23 @@ def _inference_gate(report: Report, processed: int, failed: int) -> None:
         ))
 
 
+def _no_reps_gate(report: Report) -> None:
+    """반복이 하나도 안 세어졌는데 이유를 설명하는 안내가 없으면 침묵 실패다.
+
+    신호가 평평하거나(운동이 아님) 적응 폭이 좁아 고정 임계에 못 미치는 영상은
+    rep 0 + 부분 반복 0으로 끝나는데, 다른 게이트(검출률·시점·추적)에 하나도
+    안 걸리면 사용자는 '0회'만 받고 원인을 모른다(RTExR 합성 영상 실관측:
+    syn_000021·26). 결과를 지어내지 않되, 왜 없는지는 반드시 알린다.
+    """
+    if report.rep_count or report.partial_rep_count or report.video_issues:
+        return
+    report.add_video_issue(Issue(
+        rep_index=0, code="no_reps_detected", severity=Severity.WARNING,
+        message="반복 동작을 인식하지 못했습니다. 전신이 화면에 들어오게 완전한 "
+                "측면에서 촬영했는지, 영상에 운동 동작이 담겼는지 확인해 주세요.",
+    ))
+
+
 def analyze_video(
     video_path: str | Path,
     exercise: str = "squat",
@@ -200,6 +217,7 @@ def analyze_video(
     _decode_gate(report, frame_index, declared_frames)
     _inference_gate(report, processed, detect_failed)
     _detection_gate(report, processed, with_person)
+    _no_reps_gate(report)  # 다른 게이트가 아무 설명도 못 남겼을 때의 마지막 안전망
     if out_path is not None:
         report.annotated_video_path = str(out_path)
     return report

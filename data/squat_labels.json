@@ -30,8 +30,9 @@
     "video_path": "data/videos/squat_002.mp4",
     "view": "side",
     "expected_rep_count": 2,
-    "expected_partial_rep_count": 1,
-    "expected_video_codes": ["partial_reps"],
+    "expected_partial_rep_count": 0,
+    "expected_video_codes": [],
+    "notes": "2026-08-10 라벨 교정: 종전 partial 1은 라벨 오류였다. 무릎각 시계열(정식 rep 2회 밖 원시 최저 164.9°, 부분 반복 임계 150° 근처에도 못 감)과 프레임 스트립 육안(0~0.7s/2.5~3.7s/5.5~6.5s 모두 직립 또는 rep 전환 구간) 어디에도 세 번째 dip이 없다. 종전 '원인 미조사 불일치'(PROGRESS 2026-07-29)는 이것으로 종결",
     "expected_reps": [
       {
         "rep_index": 1,

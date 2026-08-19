@@ -49,12 +49,13 @@ def test_rules_match_ai_engine_thresholds():
     except ai_bridge.EngineUnavailable:
         pytest.skip("ai 패키지 없음")
     rules = pose_eval.RULES["squat"]
-    assert rules["squat_depth_max"] == config.SQUAT_GOOD_DEPTH_ANGLE
+    # 깊이 지표는 대퇴 거상각(무릎각은 스냅샷 유실 시 예비) — measured와 같은 단위여야 한다
+    assert rules["squat_depth_max"] == config.SQUAT_FEMUR_ELEVATION_WARN
     assert rules["torso_shin_diff_max"] == config.SQUAT_TORSO_SHIN_DIFF_WARN
 
     pushup = pose_eval.RULES["pushup"]
     assert pushup["pushup_depth_max"] == config.PUSHUP_GOOD_DEPTH_ANGLE
-    assert pushup["body_line_dev_max"] == config.PUSHUP_BODY_LINE_WARN
+    assert pushup["body_line_dev_max"] == config.PUSHUP_BODY_DELTA_WARN
 
 
 def test_video_checks_have_analysis_metadata():

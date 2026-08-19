@@ -54,6 +54,7 @@ COLUMNS: dict[str, list[tuple[str, str]]] = {
     ],
     "pushup": [
         ("팔꿈치각", "bottom_angle"),
+        ("몸통top", "top_body_line_dev"),
         ("몸통이탈", "bottom_body_line_dev"),
     ],
 }

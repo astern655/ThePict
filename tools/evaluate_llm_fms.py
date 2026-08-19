@@ -68,7 +68,8 @@ class Sample:
     torso_shin_diff: float | None = None
     hip_knee_vertical_offset: float | None = None
     hip_knee_vertical_ratio: float | None = None
-    predicted_depth_issue: bool | None = None
+    predicted_depth_issue: bool | None = None       # 탐지: 경계 안내 포함 모든 신호
+    predicted_depth_correction: bool | None = None  # 교정 지시: WARNING 이상만
     predicted_depth_code: str | None = None
     predicted_torso_issue: bool | None = None
     predicted_torso_code: str | None = None
@@ -160,14 +161,18 @@ def load_sample(label_path: Path, image_dir: Path, detector: PoseDetector) -> Sa
     sample.hip_knee_vertical_ratio = _safe_round(hip_knee_ratio)
 
     # 프로덕션 판정 경로 그대로: 대퇴 거상각 1차, 못 재면 무릎각 예비.
+    # 탐지(경계 안내 포함)와 교정 지시(WARNING 이상)를 나눠 기록한다.
+    depth = None
     if femur is not None and math.isfinite(femur):
         depth = check_depth_femur(femur, rep=1)
-        sample.predicted_depth_code = depth.code
-        sample.predicted_depth_issue = depth.code != "good_depth"
     elif knee is not None and math.isfinite(knee):
         depth = check_depth(knee, rep=1)
+    if depth is not None:
         sample.predicted_depth_code = depth.code
         sample.predicted_depth_issue = depth.code != "good_depth"
+        sample.predicted_depth_correction = depth.code in (
+            "shallow_depth", "very_shallow_depth"
+        )
 
     torso_issue = check_torso(person, rep=1)
     if torso is not None and (shin is not None or torso > SQUAT_TORSO_LEAN_HARD_MAX):
@@ -248,17 +253,22 @@ def best_threshold(
 
 
 def _task_rows(samples: list[Sample], task: str) -> list[Sample]:
-    if task == "depth":
+    if task.startswith("depth"):
         return [s for s in samples if s.predicted_depth_issue is not None]
     return [s for s in samples if s.predicted_torso_issue is not None]
 
 
 def current_metrics(samples: list[Sample], task: str) -> dict[str, float | int]:
     rows = _task_rows(samples, task)
-    if task == "depth":
+    if task == "depth":  # 탐지: 경계 안내 포함 모든 신호
         return confusion(
             (s.truth_depth_issue for s in rows),
             (bool(s.predicted_depth_issue) for s in rows),
+        )
+    if task == "depth_correction":  # 교정 지시: WARNING 이상만
+        return confusion(
+            (s.truth_depth_issue for s in rows),
+            (bool(s.predicted_depth_correction) for s in rows),
         )
     return confusion(
         (s.truth_torso_issue for s in rows),
@@ -437,6 +447,7 @@ def build_report(samples: list[Sample], actions: tuple[str, ...]) -> dict:
             "samples": len(action_rows),
             "detected": sum(sample.detected for sample in action_rows),
             "depth": current_metrics(action_rows, "depth"),
+            "depth_correction": current_metrics(action_rows, "depth_correction"),
             "torso": current_metrics(action_rows, "torso"),
         }
 
@@ -461,6 +472,7 @@ def build_report(samples: list[Sample], actions: tuple[str, ...]) -> dict:
         },
         "current": {
             "depth": current_metrics(samples, "depth"),
+            "depth_correction": current_metrics(samples, "depth_correction"),
             "torso": current_metrics(samples, "torso"),
             "exact_feedback_set": {
                 "samples": len(both_available),
@@ -558,6 +570,7 @@ def main() -> int:
         "coverage": report["coverage"],
         "current": {
             "depth": report["current"]["depth"],
+            "depth_correction": report["current"]["depth_correction"],
             "torso": report["current"]["torso"],
             "exact_feedback_set": report["current"]["exact_feedback_set"],
         },

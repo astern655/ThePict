@@ -51,14 +51,15 @@ RULES = {
         # 프레임 단위 evaluate()는 쓰지 않는다. video_analysis.to_set()이 만든 checks를
         # analysis.py가 문장으로 바꿀 때 목표 범위를 여기서 읽는다.
         # 값은 ai/config.py가 원본이며 test_ai_integration.py가 두 값의 일치를 검증한다.
-        "squat_depth_max": 90,       # = ai.config.SQUAT_GOOD_DEPTH_ANGLE (rep 최저점 무릎각)
+        "squat_depth_max": 30,       # = ai.config.SQUAT_FEMUR_ELEVATION_WARN (rep 최저점 대퇴 거상각)
         "torso_shin_diff_max": 30,   # = ai.config.SQUAT_TORSO_SHIN_DIFF_WARN (상체−정강이 기울기 차)
     },
     "pushup": {
         # 영상 분석 전용. 아래 evaluate()의 프레임 단위 판정은 스쿼트 전용이라
         # 푸시업에는 knee/hip/back 규칙을 두지 않는다(FRAME_RULE_KEYS 참고).
         "pushup_depth_max": 90,     # = ai.config.PUSHUP_GOOD_DEPTH_ANGLE (rep 최저점 팔꿈치각)
-        "body_line_dev_max": 15,    # = ai.config.PUSHUP_BODY_LINE_WARN (몸통 일직선 이탈각)
+        # 몸통은 절대각이 아니라 '시작 자세 기준선 대비 변화량(|델타|)'으로 판정한다.
+        "body_line_dev_max": 15,    # = ai.config.PUSHUP_BODY_DELTA_WARN (기준선 대비 이탈 변화량)
     },
 }
 
