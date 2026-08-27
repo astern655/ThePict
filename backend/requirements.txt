@@ -1,8 +1,11 @@
 fastapi
-uvicorn
+uvicorn[standard]   # [standard]는 websockets 포함 — /inference/stream WS에 필요
+python-multipart
+
+# 테스트용. 배포에도 함께 설치되지만 둘 다 소형이라 빌드 영향은 미미하다.
+# (backend 테스트가 `pip install -r requirements.txt` 후 바로 도는 편의를 위해 여기 둔다.)
 pytest
 httpx
-python-multipart
 
 # AI 엔진(저장소 루트 ai/)은 별도 의존성을 쓴다. 실제 YOLO 추론이나
 # /inference/video 를 쓰려면 루트의 requirements.txt 도 함께 설치한다:

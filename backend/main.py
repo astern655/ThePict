@@ -26,6 +26,12 @@ app = FastAPI()
 # ponytail: 로컬 테스트용 전체 허용 — 배포 시 origin 목록으로 제한
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
+
+@app.get("/health")
+def health():
+    """Render 헬스체크·배포 확인용. AI 의존성 없이도 200을 낸다."""
+    return {"status": "ok"}
+
 EXERCISES = [
     {
         "id": "squat",
