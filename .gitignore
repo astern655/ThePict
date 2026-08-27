@@ -51,6 +51,7 @@ package-lock.json
 !docs/**/*.png
 !app/assets/**/*.png
 !app/web/**/*.png
+!app/android/**/*.png
 # 대화 중 만든 임시 검증 스크립트
 _*.py
 

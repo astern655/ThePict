@@ -1,0 +1,41 @@
+name: Build APK
+
+# 무료 클라우드 빌드. 로컬에 Android SDK 없이 APK를 만든다.
+# 실행: GitHub 저장소 → Actions 탭 → "Build APK" → Run workflow (수동),
+#       또는 app/ 변경을 main에 푸시하면 자동 실행.
+on:
+  workflow_dispatch:        # Actions 탭에서 버튼으로 수동 실행
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - '.github/workflows/build-apk.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.6'
+          channel: stable
+
+      - name: Build release APK
+        working-directory: app
+        run: |
+          flutter pub get
+          flutter build apk --release \
+            --dart-define=API_BASE_URL=https://thefit-backend.onrender.com
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TheFit-release-apk
+          path: app/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
